@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Generador QR - Dispensador de Medicamentos</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 400px;
+            width: 100%;
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 24px;
+            text-align: center;
+        }
+
+        .subtitle {
+            color: #666;
+            font-size: 14px;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            color: #555;
+            font-weight: 600;
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+
+        input {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            font-size: 16px;
+            transition: border 0.3s;
+        }
+
+        input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        button {
+            width: 100%;
+            padding: 15px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        #qr-container {
+            margin-top: 30px;
+            text-align: center;
+            display: none;
+        }
+
+        #qr-container.show {
+            display: block;
+        }
+
+        #qrcode {
+            display: inline-block;
+            padding: 20px;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+        }
+
+        .qr-info {
+            margin-top: 20px;
+            padding: 15px;
+            background: #f5f5f5;
+            border-radius: 10px;
+            font-size: 14px;
+            color: #666;
+        }
+
+        .qr-info strong {
+            color: #333;
+            display: block;
+            margin-bottom: 5px;
+        }
+
+        .info-box {
+            background: #e3f2fd;
+            border-left: 4px solid #2196F3;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 5px;
+            font-size: 13px;
+            color: #1976D2;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Dispensador de Medicamentos</h1>
+        <p class="subtitle">Generador de Código QR</p>
+
+        <div class="info-box">
+            Ingresa tu código de paciente para generar tu QR personal
+        </div>
+
+        <form id="qr-form">
+            <div class="form-group">
+                <label for="patient-code">Código de Paciente</label>
+                <input
+                    type="text"
+                    id="patient-code"
+                    placeholder="Ej: abc123xyz456"
+                    required
+                    minlength="8"
+                >
+            </div>
+
+            <button type="submit">Generar Código QR</button>
+        </form>
+
+        <div id="qr-container">
+            <div id="qrcode"></div>
+            <div class="qr-info">
+                <strong>Muestra este código al dispensador</strong>
+                <p>El código expira en 5 minutos</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Librería QRCode.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
+    <script>
+        let qrCode = null;
+        let expirationTimer = null;
+
+        document.getElementById('qr-form').addEventListener('submit', function(e) {
+            e.preventDefault();
+
+            const patientCode = document.getElementById('patient-code').value.trim();
+
+            if (!patientCode || patientCode.length < 8) {
+                alert('Por favor ingresa un código de paciente válido (mínimo 8 caracteres)');
+                return;
+            }
+
+            // Generar timestamp para el QR
+            const timestamp = Date.now();
+            const qrData = `${patientCode}`;
+
+            // Limpiar QR anterior si existe
+            const qrContainer = document.getElementById('qrcode');
+            qrContainer.innerHTML = '';
+
+            // Generar nuevo QR
+            qrCode = new QRCode(qrContainer, {
+                text: qrData,
+                width: 250,
+                height: 250,
+                colorDark: "#000000",
+                colorLight: "#ffffff",
+                correctLevel: QRCode.CorrectLevel.H
+            });
+
+            // Mostrar contenedor QR
+            document.getElementById('qr-container').classList.add('show');
+
+            // Configurar expiración (5 minutos)
+            clearTimeout(expirationTimer);
+            expirationTimer = setTimeout(function() {
+                alert('El código QR ha expirado. Por favor genera uno nuevo.');
+                document.getElementById('qr-container').classList.remove('show');
+            }, 5 * 60 * 1000); // 5 minutos
+
+            // Scroll al QR
+            document.getElementById('qr-container').scrollIntoView({
+                behavior: 'smooth',
+                block: 'center'
+            });
+        });
+
+        // Prevenir cierre accidental
+        window.addEventListener('beforeunload', function(e) {
+            if (document.getElementById('qr-container').classList.contains('show')) {
+                e.preventDefault();
+                e.returnValue = '';
+            }
+        });
+    </script>
+</body>
+</html>
