@@ -4,8 +4,8 @@
 
 Desarrollar un dispensador automático de medicamentos controlado por Arduino que garantice la dispensación segura y trazable de medicamentos mediante dos métodos de autenticación:
 
-1. **Código QR**: Escaneado desde un dispositivo móvil mediante cámara
-2. **Cédula de Ciudadanía**: Lectura y validación de cédula colombiana mediante reconocimiento óptico
+1. **Código QR**: Capturado desde el smartphone del usuario
+2. **Cédula de Ciudadanía**: Capturada desde el smartphone del usuario mediante reconocimiento óptico
 
 El sistema integra validación en tiempo real con un API backend que verifica:
 - Identidad del paciente
@@ -13,18 +13,23 @@ El sistema integra validación en tiempo real con un API backend que verifica:
 - Límite de dosis diarias para prevenir sobredosis
 - Registro completo de dispensaciones
 
+**Arquitectura actualizada**: El usuario captura la imagen desde su smartphone mediante una aplicación web progresiva (PWA), eliminando la necesidad del ESP32-CAM. Esta solución es más económica y ofrece mejor calidad de imagen.
+
 ---
 
 ## Características Principales
 
 - Autenticación dual: QR o cédula física
+- Captura de imágenes desde smartphone del usuario
 - Procesamiento de imágenes en servidor (API)
+- Sistema de sesiones temporales para autorización
 - Control de acceso por prescripción médica
 - Prevención de sobredosis con límite de dosis
 - Trazabilidad completa de dispensaciones
 - Interfaz visual con LCD
 - Alertas sonoras y visuales
 - Conectividad WiFi
+- Aplicación web progresiva (PWA) para móviles
 
 ---
 
@@ -35,13 +40,13 @@ El sistema integra validación en tiempo real con un API backend que verifica:
 | Componente | Modelo Recomendado | Cantidad | Propósito |
 |------------|-------------------|----------|-----------|
 | **Microcontrolador** | Arduino Mega 2560 | 1 | Cerebro del sistema (más pines para expansión) |
-| **Cámara** | ESP32-CAM (AI-Thinker) | 1 | Captura QR y cédulas, envío a API |
-| **Módulo WiFi** | Integrado en ESP32-CAM | - | Comunicación con API backend |
+| **Módulo WiFi** | ESP32 DevKit | 1 | Comunicación con API backend |
+| **Smartphone** | Cualquier smartphone con cámara | 1 | Captura de QR y cédulas (usuario) |
 | **Servo Motor** | SG90 o MG996R | 1 | Mecanismo de dispensación |
 | **Display LCD** | LCD 16x2 I2C | 1 | Interfaz de usuario |
 | **Buzzer** | Buzzer activo 5V | 1 | Alertas sonoras |
 | **LEDs** | LED 5mm (verde, rojo, amarillo) | 3 | Indicadores de estado |
-| **Botones** | Pulsador táctil | 2 | Selección de método y confirmación |
+| **Botones** | Pulsador táctil | 2 | Iniciar dispensación y cancelar |
 | **Resistencias** | 220Ω, 10kΩ | 5 | Pull-down y limitadoras de corriente |
 | **Fuente de Alimentación** | 5V 3A | 1 | Alimentación del sistema |
 | **Protoboard** | 830 puntos | 1 | Prototipado inicial |
@@ -68,21 +73,15 @@ El sistema integra validación en tiempo real con un API backend que verifica:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                    DISPENSADOR FÍSICO                        │
-│  ┌──────────────┐         ┌─────────────┐                   │
-│  │  ESP32-CAM   │────────▶│   Arduino   │                   │
-│  │  (Captura)   │         │    Mega     │                   │
-│  └──────────────┘         │  (Control)  │                   │
-│         │                 └─────────────┘                   │
-│         │                        │                           │
-│         │                        ├──────▶ Servo Motor       │
-│         │                        ├──────▶ LCD 16x2          │
-│         │                        ├──────▶ LEDs/Buzzer       │
-│         │                        └──────▶ Botones           │
-└─────────┼─────────────────────────────────────────────────┘
-          │
-          │ WiFi (HTTP/HTTPS)
-          │
+│                   SMARTPHONE DEL USUARIO                     │
+│  ┌────────────────────────────────────────────────────────┐ │
+│  │         Aplicación Web (PWA)                           │ │
+│  │  • Captura QR o Cédula con cámara                     │ │
+│  │  • Envía imagen al API                                 │ │
+│  │  • Muestra confirmación al usuario                     │ │
+│  └────────────────────────────────────────────────────────┘ │
+└─────────┬───────────────────────────────────────────────────┘
+          │ WiFi/4G (HTTP/HTTPS)
           ▼
 ┌─────────────────────────────────────────────────────────────┐
 │                      API BACKEND                             │
@@ -90,18 +89,19 @@ El sistema integra validación en tiempo real con un API backend que verifica:
 │                                                              │
 │  ┌────────────────────────────────────────────────────────┐ │
 │  │  Endpoints:                                            │ │
-│  │  • POST /api/validate-qr       (Imagen QR)           │ │
-│  │  • POST /api/validate-cedula   (Imagen cédula)       │ │
-│  │  • POST /api/dispense          (Registro)            │ │
-│  │  • GET  /api/patient/:id       (Info paciente)       │ │
+│  │  • POST /api/request-dispense   (Crea sesión 90s)    │ │
+│  │  • GET  /api/check-pending      (Consulta sesiones)  │ │
+│  │  • POST /api/confirm-dispense   (Confirma)           │ │
+│  │  • GET  /api/session/:id        (Estado sesión)      │ │
 │  └────────────────────────────────────────────────────────┘ │
 │                            │                                 │
 │                            ▼                                 │
 │  ┌────────────────────────────────────────────────────────┐ │
 │  │  Servicios:                                            │ │
-│  │  • OCR (Tesseract.js / Cloud Vision API)             │ │
-│  │  • QR Decoder (jsQR / OpenCV)                        │ │
+│  │  • OCR (Tesseract.js)                                 │ │
+│  │  • QR Decoder (jsQR)                                  │ │
 │  │  • Validación de prescripciones                       │ │
+│  │  • Gestión de sesiones temporales                     │ │
 │  │  • Control de dosis                                   │ │
 │  └────────────────────────────────────────────────────────┘ │
 │                            │                                 │
@@ -110,6 +110,21 @@ El sistema integra validación en tiempo real con un API backend que verifica:
 │                   │   Database   │                          │
 │                   │  (MongoDB)   │                          │
 │                   └──────────────┘                          │
+└─────────┬───────────────────────────────────────────────────┘
+          │ WiFi (HTTP)
+          ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    DISPENSADOR FÍSICO                        │
+│  ┌──────────────┐         ┌─────────────┐                   │
+│  │     ESP32    │────────▶│   Arduino   │                   │
+│  │  (WiFi/HTTP) │  Serial │    Mega     │                   │
+│  └──────────────┘         │  (Control)  │                   │
+│                           └─────────────┘                   │
+│                                  │                           │
+│                                  ├──────▶ Servo Motor       │
+│                                  ├──────▶ LCD 16x2          │
+│                                  ├──────▶ LEDs/Buzzer       │
+│                                  └──────▶ Botones           │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -123,8 +138,10 @@ automatizacion/
 ├── hardware/
 │   ├── arduino_main/
 │   │   └── arduino_main.ino          # Código principal Arduino Mega
-│   ├── esp32_cam/
-│   │   └── esp32_cam.ino             # Código ESP32-CAM
+│   ├── esp32_regular/
+│   │   └── esp32_regular.ino         # Código ESP32 (sin cámara)
+│   ├── esp32_cam/                    # [DEPRECADO - ver nota]
+│   │   └── esp32_cam.ino             # Código ESP32-CAM (referencia)
 │   ├── wiring_diagram.png            # Diagrama de conexiones
 │   └── components_list.md            # Lista detallada de componentes
 ├── api/
@@ -132,7 +149,8 @@ automatizacion/
 │   ├── server.js                     # Servidor Express
 │   ├── routes/
 │   │   ├── validation.routes.js     # Rutas de validación
-│   │   └── dispense.routes.js       # Rutas de dispensación
+│   │   ├── dispense.routes.js       # Rutas de dispensación
+│   │   └── session.routes.js        # Rutas de sesiones (NUEVO)
 │   ├── services/
 │   │   ├── qr.service.js            # Procesamiento QR
 │   │   ├── ocr.service.js           # OCR para cédulas
@@ -140,10 +158,14 @@ automatizacion/
 │   ├── models/
 │   │   ├── Patient.js               # Modelo de paciente
 │   │   ├── Prescription.js          # Modelo de prescripción
-│   │   └── Dispense.js              # Modelo de dispensación
+│   │   ├── Dispense.js              # Modelo de dispensación
+│   │   └── DispenseSession.js       # Modelo de sesiones (NUEVO)
 │   └── config/
 │       └── database.js              # Configuración DB
-├── mobile-example/
+├── mobile-app/
+│   ├── dispenser-client.html        # App web móvil (PWA) (NUEVO)
+│   ├── manifest.json                # Configuración PWA (NUEVO)
+│   ├── service-worker.js            # Service worker (NUEVO)
 │   └── qr-generator.html            # Ejemplo generador QR
 └── docs/
     ├── API.md                       # Documentación del API
@@ -155,29 +177,40 @@ automatizacion/
 
 ## Flujo de Operación
 
+### Flujo General (Nueva Arquitectura)
+
+1. Paciente abre la aplicación web en su smartphone
+2. Selecciona método de autenticación (QR o Cédula)
+3. Captura imagen con la cámara de su smartphone
+4. La app envía imagen al API para validación
+5. API procesa imagen, valida identidad y prescripción
+6. Si autorizado: API crea sesión temporal de 90 segundos
+7. App muestra confirmación: "Presiona el botón del dispensador"
+8. Paciente presiona botón en el dispensador físico
+9. Arduino solicita al ESP32 verificar sesiones pendientes
+10. ESP32 consulta al API cada 2 segundos
+11. API responde con la sesión pendiente
+12. ESP32 envía datos al Arduino (paciente, medicamento)
+13. Arduino muestra información en LCD
+14. Servo dispensa medicamento, LED verde
+15. Arduino confirma dispensación al servidor
+16. API registra la dispensación y marca sesión como completada
+
 ### Opción 1: Validación con QR
 
-1. Paciente abre aplicación móvil y genera código QR con su ID
-2. Paciente presiona botón "QR" en el dispensador
-3. LCD muestra: "Muestre el código QR"
-4. ESP32-CAM captura imagen del código QR
-5. Arduino envía imagen al API via WiFi
-6. API procesa QR, valida identidad y prescripción
-7. API responde: AUTORIZADO o DENEGADO
-8. Si autorizado: servo dispensa medicamento, LED verde
-9. Si denegado: LED rojo, buzzer, LCD muestra razón
-10. API registra la dispensación
+1. En la app móvil, seleccionar "Código QR"
+2. Mostrar código QR generado previamente
+3. Capturar foto del código QR con la cámara
+4. App valida y crea sesión de 90 segundos
+5. Presionar botón en dispensador para recibir medicamento
 
 ### Opción 2: Validación con Cédula
 
-1. Paciente presiona botón "Cédula" en el dispensador
-2. LCD muestra: "Muestre su cédula"
-3. ESP32-CAM captura imagen de la cédula
-4. Arduino envía imagen al API
-5. API procesa imagen con OCR, extrae número de cédula
-6. API valida identidad y prescripción
-7. API responde: AUTORIZADO o DENEGADO
-8. Proceso de dispensación igual que opción QR
+1. En la app móvil, seleccionar "Cédula"
+2. Colocar cédula en superficie plana con buena iluminación
+3. Capturar foto de la cédula con la cámara
+4. App procesa con OCR y crea sesión de 90 segundos
+5. Presionar botón en dispensador para recibir medicamento
 
 ---
 
@@ -228,20 +261,29 @@ cp .env.example .env
 # Editar .env con tus credenciales
 ```
 
-### 4. Cargar Código en Arduino
+### 4. Cargar Código en Microcontroladores
 ```bash
-# Abrir hardware/arduino_main/arduino_main.ino
-# Configurar WiFi SSID y password
-# Cargar en Arduino Mega
+# Abrir hardware/arduino_main/arduino_main.ino en Arduino IDE
+# Cargar en Arduino Mega 2560
 
-# Abrir hardware/esp32_cam/esp32_cam.ino
-# Cargar en ESP32-CAM
+# Abrir hardware/esp32_regular/esp32_regular.ino en Arduino IDE
+# Configurar WiFi SSID y password
+# Configurar URL del API
+# Cargar en ESP32 DevKit
 ```
 
 ### 5. Iniciar API
 ```bash
 cd api
 npm start
+```
+
+### 6. Acceder a la Aplicación Móvil
+```bash
+# Abrir en el navegador del smartphone:
+http://IP_DEL_SERVIDOR:3000/dispenser-client.html
+
+# O configurar un servidor web (nginx/apache) para servir mobile-app/
 ```
 
 ---
@@ -270,15 +312,36 @@ npm start
 
 ---
 
-## Próximos Pasos
+## Estado del Proyecto
 
 1. ✅ Documentación inicial
-2. ⬜ Implementar API backend
-3. ⬜ Desarrollar código Arduino
-4. ⬜ Crear esquemático de conexiones
-5. ⬜ Diseñar carcasa 3D
-6. ⬜ Pruebas de integración
-7. ⬜ Documentación de API completa
+2. ✅ API backend implementado
+3. ✅ Código Arduino desarrollado
+4. ✅ Código ESP32 desarrollado
+5. ✅ Aplicación web móvil (PWA)
+6. ✅ Sistema de sesiones temporales
+7. ⬜ Crear esquemático de conexiones
+8. ⬜ Diseñar carcasa 3D
+9. ⬜ Pruebas de integración completas
+10. ⬜ Documentación de API completa
+
+## Notas Importantes
+
+### Cambios de Arquitectura
+
+**Versión anterior (con ESP32-CAM)**:
+- Requería ESP32-CAM (~$10-12 USD)
+- Captura de imágenes en el dispensador
+- Complejidad adicional de hardware
+
+**Versión actual (sin ESP32-CAM)**:
+- Usa ESP32 regular (~$5-7 USD) - Más económico
+- Usuario captura desde su smartphone (mejor calidad)
+- Hardware más simple
+- Mismo nivel de seguridad
+- Mejor experiencia de usuario
+
+Los archivos de la versión anterior se mantienen en `hardware/esp32_cam/` como referencia.
 
 ---
 

@@ -20,6 +20,7 @@ require('dotenv').config();
 // Importar rutas
 const validationRoutes = require('./routes/validation.routes');
 const dispenseRoutes = require('./routes/dispense.routes');
+const sessionRoutes = require('./routes/session.routes');
 
 // Crear aplicación Express
 const app = express();
@@ -77,6 +78,7 @@ app.get('/health', (req, res) => {
 // Rutas de API
 app.use('/api', validationRoutes);
 app.use('/api', dispenseRoutes);
+app.use('/api', sessionRoutes);
 
 // Ruta 404
 app.use((req, res) => {

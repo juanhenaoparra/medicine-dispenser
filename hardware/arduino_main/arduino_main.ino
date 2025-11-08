@@ -2,10 +2,17 @@
  * Dispensador Inteligente de Medicamentos
  * Arduino Mega 2560 - Controlador Principal
  *
+ * NUEVA ARQUITECTURA (sin ESP32-CAM):
+ * - Usuario captura imagen desde smartphone
+ * - API valida y crea sesión temporal (90 seg)
+ * - Usuario presiona botón en dispensador
+ * - ESP32 consulta sesiones pendientes al API
+ * - Arduino recibe autorización y dispensa
+ *
  * Funciones:
  * - Control de interfaz de usuario (LCD, botones, LEDs, buzzer)
  * - Control de servo motor para dispensación
- * - Comunicación con ESP32-CAM vía Serial
+ * - Comunicación con ESP32 regular vía Serial
  * - Lógica de estados del sistema
  */
 
@@ -34,8 +41,8 @@
 #define BUZZER_PIN 10
 
 // Botones
-#define BTN_QR 7        // Botón método QR
-#define BTN_CEDULA 6    // Botón método Cédula
+#define BTN_DISPENSE 7  // Botón para iniciar dispensación
+#define BTN_CANCEL 6    // Botón para cancelar
 
 // Comunicación Serial con ESP32-CAM
 #define ESP32_SERIAL Serial3  // TX3=14, RX3=15
@@ -52,10 +59,8 @@ Servo servoMotor;
 // ============================================
 
 enum SystemState {
-  STATE_IDLE,           // Esperando selección de método
-  STATE_WAIT_QR,        // Esperando código QR
-  STATE_WAIT_CEDULA,    // Esperando cédula
-  STATE_PROCESSING,     // Procesando imagen en API
+  STATE_IDLE,           // Esperando que usuario presione botón
+  STATE_CHECKING,       // Consultando si hay sesión pendiente
   STATE_DISPENSING,     // Dispensando medicamento
   STATE_SUCCESS,        // Dispensación exitosa
   STATE_ERROR           // Error en validación
@@ -76,9 +81,13 @@ SystemState currentState = STATE_IDLE;
 // ============================================
 
 String apiResponse = "";
+String currentSessionId = "";
+String currentPatient = "";
+String currentMedicine = "";
+String currentDosage = "";
+
 unsigned long lastActionTime = 0;
-const unsigned long TIMEOUT_CAPTURE = 10000;  // 10 segundos timeout para captura
-const unsigned long TIMEOUT_PROCESSING = 15000; // 15 segundos timeout para API
+const unsigned long TIMEOUT_CHECKING = 90000;      // 90 segundos timeout para verificación
 const unsigned long STATE_SUCCESS_DURATION = 3000; // Mostrar éxito 3 segundos
 const unsigned long STATE_ERROR_DURATION = 5000;   // Mostrar error 5 segundos
 
@@ -99,8 +108,8 @@ void setup() {
   pinMode(LED_YELLOW, OUTPUT);
   pinMode(LED_RED, OUTPUT);
   pinMode(BUZZER_PIN, OUTPUT);
-  pinMode(BTN_QR, INPUT);
-  pinMode(BTN_CEDULA, INPUT);
+  pinMode(BTN_DISPENSE, INPUT);
+  pinMode(BTN_CANCEL, INPUT);
 
   // Inicializar LEDs apagados
   digitalWrite(LED_GREEN, LOW);
@@ -132,10 +141,10 @@ void setup() {
 
 void loop() {
   // Leer botones
-  bool btnQRPressed = digitalRead(BTN_QR) == HIGH;
-  bool btnCedulaPressed = digitalRead(BTN_CEDULA) == HIGH;
+  bool btnDispensePressed = digitalRead(BTN_DISPENSE) == HIGH;
+  bool btnCancelPressed = digitalRead(BTN_CANCEL) == HIGH;
 
-  // Leer respuesta del ESP32-CAM si hay datos disponibles
+  // Leer respuesta del ESP32 si hay datos disponibles
   if (ESP32_SERIAL.available()) {
     String response = ESP32_SERIAL.readStringUntil('\n');
     response.trim();
@@ -145,37 +154,25 @@ void loop() {
   // Máquina de estados
   switch (currentState) {
     case STATE_IDLE:
-      // Esperar selección de método
-      if (btnQRPressed) {
-        changeState(STATE_WAIT_QR);
-      } else if (btnCedulaPressed) {
-        changeState(STATE_WAIT_CEDULA);
+      // Esperar que usuario presione botón de dispensación
+      if (btnDispensePressed) {
+        changeState(STATE_CHECKING);
       }
       break;
 
-    case STATE_WAIT_QR:
-      // Timeout si no se captura en tiempo
-      if (millis() - lastActionTime > TIMEOUT_CAPTURE) {
-        showError("Timeout captura");
-        delay(2000);
-        changeState(STATE_IDLE);
-      }
-      break;
-
-    case STATE_WAIT_CEDULA:
-      // Timeout si no se captura en tiempo
-      if (millis() - lastActionTime > TIMEOUT_CAPTURE) {
-        showError("Timeout captura");
-        delay(2000);
-        changeState(STATE_IDLE);
-      }
-      break;
-
-    case STATE_PROCESSING:
-      // Timeout si API no responde
-      if (millis() - lastActionTime > TIMEOUT_PROCESSING) {
+    case STATE_CHECKING:
+      // Verificando si hay sesión pendiente
+      // Timeout si no se encuentra sesión en 90 segundos
+      if (millis() - lastActionTime > TIMEOUT_CHECKING) {
+        ESP32_SERIAL.println("STOP_CHECK");
+        showError("Timeout - Sin sesion");
         changeState(STATE_ERROR);
-        showError("Timeout API");
+      }
+      
+      // Permitir cancelar
+      if (btnCancelPressed) {
+        ESP32_SERIAL.println("STOP_CHECK");
+        changeState(STATE_IDLE);
       }
       break;
 
@@ -219,44 +216,22 @@ void changeState(SystemState newState) {
     case STATE_IDLE:
       lcd.clear();
       lcd.setCursor(0, 0);
-      lcd.print("Seleccione modo");
+      lcd.print("Capture imagen");
       lcd.setCursor(0, 1);
-      lcd.print("QR    /  Cedula");
+      lcd.print("Luego presione");
       Serial.println("Estado: IDLE");
       break;
 
-    case STATE_WAIT_QR:
+    case STATE_CHECKING:
       lcd.clear();
       lcd.setCursor(0, 0);
-      lcd.print("Muestre codigo");
-      lcd.setCursor(0, 1);
-      lcd.print("QR al lector");
-      digitalWrite(LED_YELLOW, HIGH);
-      // Enviar comando al ESP32-CAM para capturar QR
-      ESP32_SERIAL.println("CAPTURE_QR");
-      Serial.println("Estado: WAIT_QR");
-      break;
-
-    case STATE_WAIT_CEDULA:
-      lcd.clear();
-      lcd.setCursor(0, 0);
-      lcd.print("Muestre cedula");
-      lcd.setCursor(0, 1);
-      lcd.print("al lector");
-      digitalWrite(LED_YELLOW, HIGH);
-      // Enviar comando al ESP32-CAM para capturar cédula
-      ESP32_SERIAL.println("CAPTURE_CEDULA");
-      Serial.println("Estado: WAIT_CEDULA");
-      break;
-
-    case STATE_PROCESSING:
-      lcd.clear();
-      lcd.setCursor(0, 0);
-      lcd.print("Validando...");
+      lcd.print("Verificando...");
       lcd.setCursor(0, 1);
       lcd.print("Espere");
       digitalWrite(LED_YELLOW, HIGH);
-      Serial.println("Estado: PROCESSING");
+      // Solicitar al ESP32 que consulte sesiones pendientes
+      ESP32_SERIAL.println("CHECK_PENDING");
+      Serial.println("Estado: CHECKING");
       break;
 
     case STATE_DISPENSING:
@@ -301,49 +276,56 @@ void handleESP32Response(String response) {
   Serial.print("ESP32 response: ");
   Serial.println(response);
 
-  if (response.startsWith("CAPTURING")) {
-    changeState(STATE_PROCESSING);
-  }
-  else if (response.startsWith("API_OK:AUTHORIZED")) {
-    // Extraer información adicional si está disponible
-    // Formato: API_OK:AUTHORIZED:NombrePaciente:Medicamento
-    int firstColon = response.indexOf(':', 7);
-    if (firstColon > 0) {
-      int secondColon = response.indexOf(':', firstColon + 1);
-      String patientName = response.substring(firstColon + 1, secondColon);
-      String medicine = response.substring(secondColon + 1);
+  if (response.startsWith("AUTHORIZED:")) {
+    // Formato: AUTHORIZED:sessionId:Patient:Medicine:Dosage
+    // Parsear la respuesta
+    int firstColon = response.indexOf(':', 11);
+    int secondColon = response.indexOf(':', firstColon + 1);
+    int thirdColon = response.indexOf(':', secondColon + 1);
+    
+    if (firstColon > 0 && secondColon > 0 && thirdColon > 0) {
+      currentSessionId = response.substring(11, firstColon);
+      currentPatient = response.substring(firstColon + 1, secondColon);
+      currentMedicine = response.substring(secondColon + 1, thirdColon);
+      currentDosage = response.substring(thirdColon + 1);
 
+      // Mostrar información del paciente
       lcd.clear();
       lcd.setCursor(0, 0);
-      lcd.print(patientName);
+      lcd.print(currentPatient);
       lcd.setCursor(0, 1);
-      lcd.print(medicine);
+      lcd.print(currentMedicine);
       delay(2000);
-    }
 
-    // Dispensar medicamento
-    dispense();
-  }
-  else if (response.startsWith("API_ERROR:")) {
-    // Extraer razón del error
-    String errorReason = response.substring(10);
-    showError(errorReason);
-    changeState(STATE_ERROR);
+      // Dispensar medicamento
+      dispense();
+    } else {
+      showError("Error en respuesta");
+      changeState(STATE_ERROR);
+    }
   }
   else if (response.startsWith("ERROR:")) {
-    // Error del ESP32-CAM (captura, WiFi, etc.)
+    // Error del ESP32 (WiFi, API, etc.)
     String errorMsg = response.substring(6);
     showError(errorMsg);
     changeState(STATE_ERROR);
   }
   else if (response == "WIFI_CONNECTED") {
-    Serial.println("ESP32-CAM conectado a WiFi");
+    Serial.println("ESP32 conectado a WiFi");
   }
   else if (response == "WIFI_DISCONNECTED") {
-    Serial.println("ESP32-CAM desconectado de WiFi");
-    showError("Sin conexion");
-    delay(2000);
-    changeState(STATE_IDLE);
+    Serial.println("ESP32 desconectado de WiFi");
+    if (currentState == STATE_CHECKING) {
+      showError("Sin conexion WiFi");
+      changeState(STATE_ERROR);
+    }
+  }
+  else if (response == "CONFIRM_OK") {
+    Serial.println("Dispensacion confirmada en servidor");
+  }
+  else if (response.startsWith("IP:")) {
+    Serial.print("ESP32 IP: ");
+    Serial.println(response.substring(3));
   }
 }
 
@@ -362,8 +344,20 @@ void dispense() {
   servoMotor.write(SERVO_POS_CLOSED);
   delay(500);
 
+  // Confirmar dispensación con el servidor
+  if (currentSessionId.length() > 0) {
+    ESP32_SERIAL.print("CONFIRM:");
+    ESP32_SERIAL.println(currentSessionId);
+  }
+
   // Cambiar a estado de éxito
   changeState(STATE_SUCCESS);
+
+  // Limpiar variables
+  currentSessionId = "";
+  currentPatient = "";
+  currentMedicine = "";
+  currentDosage = "";
 }
 
 // ============================================
@@ -424,19 +418,37 @@ void playErrorTone() {
 // ============================================
 
 /*
- * PROTOCOLO DE COMUNICACIÓN CON ESP32-CAM:
+ * PROTOCOLO DE COMUNICACIÓN CON ESP32 (nueva arquitectura):
  *
  * Arduino → ESP32:
- *   - "CAPTURE_QR"      : Solicitar captura de código QR
- *   - "CAPTURE_CEDULA"  : Solicitar captura de cédula
+ *   - "CHECK_PENDING"       : Solicitar verificación de sesión pendiente
+ *   - "STOP_CHECK"          : Detener verificación
+ *   - "CONFIRM:sessionId"   : Confirmar dispensación exitosa
  *
  * ESP32 → Arduino:
- *   - "CAPTURING"                            : Iniciando captura
- *   - "API_OK:AUTHORIZED[:Nombre:Med]"      : Autorizado para dispensar
- *   - "API_ERROR:Razon"                     : Denegado por API
- *   - "ERROR:Mensaje"                       : Error de ESP32 (WiFi, cámara, etc.)
- *   - "WIFI_CONNECTED"                      : Conectado a WiFi
- *   - "WIFI_DISCONNECTED"                   : Desconectado de WiFi
+ *   - "ESP32_READY"                                 : ESP32 iniciado
+ *   - "WIFI_CONNECTED"                              : Conectado a WiFi
+ *   - "WIFI_DISCONNECTED"                           : Desconectado de WiFi
+ *   - "IP:192.168.x.x"                              : Dirección IP
+ *   - "AUTHORIZED:sessionId:Patient:Med:Dose"      : Sesión autorizada encontrada
+ *   - "CONFIRM_OK"                                  : Confirmación enviada al API
+ *   - "ERROR:Mensaje"                               : Error
+ *
+ * FLUJO DE OPERACIÓN (NUEVA ARQUITECTURA):
+ *
+ * 1. Usuario abre web app en smartphone
+ * 2. Selecciona método (QR o Cédula) y captura foto
+ * 3. Web app envía imagen al API
+ * 4. API valida y crea sesión temporal de 90 segundos
+ * 5. Web app muestra confirmación: "Presiona el botón del dispensador"
+ * 6. Usuario presiona botón en dispensador físico
+ * 7. Arduino envía "CHECK_PENDING" al ESP32
+ * 8. ESP32 consulta al API cada 2 segundos
+ * 9. Si hay sesión pendiente, ESP32 envía "AUTHORIZED:..." al Arduino
+ * 10. Arduino muestra info del paciente y dispensa medicamento
+ * 11. Arduino envía "CONFIRM:sessionId" al ESP32
+ * 12. ESP32 confirma con el API que se dispensó
+ * 13. Sistema vuelve a estado IDLE
  *
  * MEJORAS FUTURAS:
  * - Añadir sensor de presencia para activación automática
@@ -445,4 +457,6 @@ void playErrorTone() {
  * - Sistema de notificaciones con buzzer más elaborado
  * - Contador de dosis restantes en el compartimento
  * - Modo de mantenimiento/recarga
+ * - Pantalla LCD más grande para mostrar más información
+ * - Múltiples compartimentos para diferentes medicamentos
  */

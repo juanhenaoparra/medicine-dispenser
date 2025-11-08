@@ -1,5 +1,12 @@
 # Lista Detallada de Componentes
 
+## ⚠️ ACTUALIZACIÓN IMPORTANTE
+
+**Arquitectura Modificada**: Esta lista refleja la nueva arquitectura **sin ESP32-CAM**. 
+El usuario captura las imágenes desde su smartphone, lo que hace el sistema más económico y sencillo.
+
+---
+
 ## Hardware Principal
 
 ### 1. Arduino Mega 2560
@@ -10,26 +17,31 @@
   - 16 entradas analógicas
   - Memoria Flash: 256 KB
   - SRAM: 8 KB
+- **Voltaje**: 5V
 - **Precio aproximado**: $25-35 USD
 - **Dónde comprar**: Vistronica, ElectronicaEmbajadores (Colombia)
 
-### 2. ESP32-CAM (AI-Thinker)
-- **Función**: Captura de imágenes (QR y cédulas), comunicación WiFi
+### 2. ESP32 DevKit (NodeMCU-32S o similar)
+- **Función**: Comunicación WiFi con API backend
 - **Especificaciones**:
-  - Procesador: ESP32-S Dual Core
-  - Cámara: OV2640 (2MP)
+  - Procesador: ESP32 Dual Core
   - WiFi: 802.11 b/g/n
   - Bluetooth: 4.2
   - Memoria: 4MB Flash
-  - MicroSD slot
-- **Voltaje**: 5V
-- **Precio aproximado**: $8-12 USD
-- **Nota**: Incluye módulo WiFi integrado
+  - USB integrado (no necesita programador externo)
+  - Múltiples GPIOs
+- **Voltaje**: 5V (regulado internamente a 3.3V)
+- **Precio aproximado**: $5-7 USD
+- **Ventajas vs ESP32-CAM**:
+  - Más económico
+  - USB integrado (fácil programación)
+  - No necesita cámara (usuario usa su smartphone)
+- **Dónde comprar**: Vistronica, MercadoLibre Colombia
 
-### 3. Programador FTDI para ESP32-CAM
-- **Función**: Programar el ESP32-CAM (no tiene USB integrado)
-- **Modelo**: FT232RL USB a TTL Serial
-- **Precio aproximado**: $3-5 USD
+### 3. ~~ESP32-CAM (AI-Thinker)~~ [DEPRECADO]
+- **Nota**: Ya no se necesita en la nueva arquitectura
+- La captura de imágenes se realiza desde el smartphone del usuario
+- Si ya tienes un ESP32-CAM, puedes usarlo sin la cámara conectada
 
 ### 4. Servo Motor
 - **Opciones**:
@@ -64,7 +76,7 @@
 - **Colores**:
   - Verde: Dispensación exitosa
   - Rojo: Error/Denegado
-  - Amarillo: Procesando
+  - Amarillo: Verificando sesión
 - **Especificaciones**: 5mm, 20mA
 - **Precio aproximado**: $0.10 cada uno
 
@@ -78,14 +90,23 @@
 - **Cantidad**: 2
 - **Tipo**: Pulsador táctil (Push button)
 - **Función**:
-  - Botón 1: Seleccionar método (QR/Cédula)
-  - Botón 2: Confirmar/Cancelar
+  - Botón 1: Iniciar dispensación (después de capturar imagen en smartphone)
+  - Botón 2: Cancelar verificación
 - **Precio aproximado**: $0.20 cada uno
 
-### 10. Fuente de Alimentación
+### 10. Smartphone con Cámara
+- **Función**: Captura de imágenes (QR y cédulas)
+- **Requisitos**:
+  - Cámara funcional (cualquier resolución moderna)
+  - Navegador web moderno (Chrome, Safari, Firefox)
+  - Conexión a internet (WiFi o datos móviles)
+- **Nota**: El usuario usa su propio smartphone, no requiere compra adicional
+
+### 11. Fuente de Alimentación
 - **Especificaciones**: 5V 3A (mínimo 2A)
 - **Conector**: Barrel jack 5.5mm x 2.1mm
 - **Precio aproximado**: $5-8 USD
+- **Nota**: El ESP32 consume menos que el ESP32-CAM, por lo que 2A es suficiente
 
 ---
 
@@ -157,14 +178,27 @@
 
 ## Presupuesto Total Estimado
 
+### Comparación de Costos
+
+| Componente | Versión Anterior (ESP32-CAM) | Nueva Versión (ESP32 + Smartphone) |
+|------------|------------------------------|-------------------------------------|
+| Módulo WiFi/Cámara | ESP32-CAM: $10-12 | ESP32 DevKit: $5-7 |
+| Programador FTDI | $3-5 | No necesario (USB integrado) |
+| Smartphone | - | $0 (usuario lo tiene) |
+| **Subtotal diferencia** | **$13-17** | **$5-7** |
+
+### Presupuesto Total (Nueva Versión)
+
 | Categoría | Precio (USD) |
 |-----------|--------------|
-| **Hardware electrónico** | $60-85 |
+| **Hardware electrónico** | $50-70 |
 | **Cables y protoboard** | $10-15 |
 | **Estructura física** | $15-20 |
 | **Herramientas** (si no las tienes) | $30-50 |
-| **Total básico** | **$85-120** |
-| **Con opcionales** | **$100-150** |
+| **Total básico** | **$75-105** |
+| **Con opcionales** | **$90-130** |
+
+**Ahorro estimado**: $10-15 USD vs versión con ESP32-CAM
 
 *Precios en Colombia pueden variar. Recomendado comprar en: Vistronica, Sigma Electrónica, MercadoLibre*
 
@@ -173,10 +207,31 @@
 ## Notas de Compra
 
 1. **Arduino Mega**: Asegúrate de que sea original o un clon de calidad (CH340 funciona bien)
-2. **ESP32-CAM**: Comprar con antena externa para mejor señal WiFi
+2. **ESP32 DevKit**: Preferir modelos con USB-C o micro-USB integrado. Verificar que tenga WiFi funcional
 3. **Servo**: Si el dispensador es pesado, usa MG996R en lugar de SG90
 4. **Fuente**: No escatimar en la fuente, una mala puede dañar los componentes
 5. **Cables**: Comprar cables Dupont de calidad, los muy baratos se desconectan fácilmente
+
+## Ventajas de la Nueva Arquitectura
+
+### ✅ Ventajas
+- **Más económico**: Ahorro de $10-15 USD
+- **Más simple**: Menos componentes que programar y conectar
+- **Mejor calidad de imagen**: Cámaras de smartphones son superiores
+- **Más fácil de programar**: ESP32 DevKit tiene USB integrado
+- **Mayor flexibilidad**: Usuario puede estar en cualquier lugar con internet
+- **PWA instalable**: App se puede instalar en el smartphone como nativa
+
+### ⚠️ Consideraciones
+- **Requiere smartphone**: Usuario debe tener un smartphone con cámara
+- **Requiere internet**: Tanto smartphone como dispensador necesitan conexión
+- **Dos pasos**: Usuario captura imagen Y presiona botón (vs un solo paso)
+
+### 🔄 Migración desde ESP32-CAM
+Si ya tienes un ESP32-CAM:
+1. Puedes usarlo sin conectar la cámara
+2. Solo carga el código de `esp32_regular.ino`
+3. Funciona igual que un ESP32 DevKit normal
 
 ---
 
@@ -203,18 +258,20 @@ Ver archivo `wiring_diagram.png` en este directorio para el esquemático complet
 - LED Amarillo: pin 12 + resistencia 220Ω
 - LED Rojo: pin 11 + resistencia 220Ω
 - Buzzer: pin 10
-- Botón 1 (QR): pin 7 + resistencia 10kΩ (pull-down)
-- Botón 2 (Cédula): pin 6 + resistencia 10kΩ (pull-down)
+- Botón 1 (Dispensar): pin 7 + resistencia 10kΩ (pull-down)
+- Botón 2 (Cancelar): pin 6 + resistencia 10kΩ (pull-down)
 
-**Arduino Mega ↔ ESP32-CAM (Comunicación Serial):**
-- TX3 (pin 14) → RX (ESP32)
-- RX3 (pin 15) → TX (ESP32)
+**Arduino Mega ↔ ESP32 DevKit (Comunicación Serial):**
+- TX3 (pin 14) → RX (GPIO3 en ESP32)
+- RX3 (pin 15) → TX (GPIO1 en ESP32)
 - GND → GND
-- 5V → 5V
+- 5V → VIN (el ESP32 tiene regulador interno a 3.3V)
 
-**ESP32-CAM:**
-- GPIO 0 → GND (para programación, luego desconectar)
-- Flash LED: GPIO 4 (integrado, para iluminación en captura)
+**ESP32 DevKit:**
+- No requiere configuración especial
+- USB integrado para programación
+- LED integrado en GPIO2 (indica estado WiFi)
+- No requiere pines adicionales (no hay cámara)
 
 **Alimentación:**
 - Fuente 5V 3A → Arduino Vin
