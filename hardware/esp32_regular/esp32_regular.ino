@@ -21,13 +21,13 @@
 // ============================================
 
 const char* ssid = "TU_WIFI_SSID";          // Cambiar por tu red WiFi
-const char* password = "TU_WIFI_PASSWORD";  // Cambiar por tu contraseña
+const char* password = "4D9697516085";  // Cambiar por tu contraseña
 
 // ============================================
 // CONFIGURACIÓN DE API
 // ============================================
 
-const char* apiBaseUrl = "http://192.168.1.100:3000/api"; // Cambiar por IP de tu servidor
+const char* apiBaseUrl = "http://192.168.1.8:3000/api"; // Cambiar por IP de tu servidor
 const char* dispenserId = "dispenser-01";
 
 // ============================================

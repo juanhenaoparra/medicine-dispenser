@@ -1,143 +1,193 @@
 /**
  * Servicio de OCR (Optical Character Recognition)
  *
- * Extrae el número de cédula colombiana de imágenes usando Tesseract.js
+ * Extrae el número de cédula colombiana de imágenes usando OpenAI Vision API
  */
 
-const Tesseract = require('tesseract.js');
-const sharp = require('sharp');
+const OpenAI = require('openai')
 
 class OCRService {
   constructor() {
-    this.worker = null;
+    this.openai = null
   }
 
   /**
-   * Inicializa el worker de Tesseract
+   * Inicializa el cliente de OpenAI
    */
-  async initWorker() {
-    if (!this.worker) {
-      this.worker = await Tesseract.createWorker('spa', 1, {
-        logger: m => {
-          if (m.status === 'recognizing text') {
-            console.log(`OCR Progress: ${Math.round(m.progress * 100)}%`);
-          }
-        }
-      });
+  getClient() {
+    if (!this.openai) {
+      const apiKey = process.env.OPENAI_API_KEY
+      
+      if (!apiKey) {
+        throw new Error('OPENAI_API_KEY no está configurada en las variables de entorno')
+      }
 
-      await this.worker.setParameters({
-        tessedit_char_whitelist: '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ ',
-        tessedit_pageseg_mode: Tesseract.PSM.AUTO
-      });
+      this.openai = new OpenAI({
+        apiKey: apiKey
+      })
     }
-    return this.worker;
+    return this.openai
   }
 
   /**
-   * Preprocesa la imagen para mejorar el reconocimiento OCR
-   * @param {Buffer} imageBuffer - Buffer de la imagen
-   * @returns {Promise<Buffer>} - Imagen preprocesada
-   */
-  async preprocessImage(imageBuffer) {
-    try {
-      return await sharp(imageBuffer)
-        .greyscale()                    // Convertir a escala de grises
-        .normalize()                    // Normalizar contraste
-        .sharpen()                      // Aumentar nitidez
-        .threshold(128)                 // Umbral binario
-        .resize(1200, null, {           // Redimensionar para mejor OCR
-          fit: 'inside',
-          withoutEnlargement: false
-        })
-        .toBuffer();
-    } catch (error) {
-      console.error('Error preprocessing image:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Extrae texto de una imagen usando OCR
+   * Extrae texto de una imagen usando OpenAI Vision API
    * @param {string} imageBase64 - Imagen en formato base64
    * @returns {Promise<string>} - Texto extraído
    */
   async extractText(imageBase64) {
     try {
-      // Extraer el contenido base64
-      const base64Data = imageBase64.replace(/^data:image\/\w+;base64,/, '');
-      const imageBuffer = Buffer.from(base64Data, 'base64');
+      const client = this.getClient()
 
-      // Preprocesar imagen
-      const processedBuffer = await this.preprocessImage(imageBuffer);
+      // Asegurar que tenga el prefijo data:image correcto
+      const imageData = imageBase64.startsWith('data:image') 
+        ? imageBase64 
+        : `data:image/jpeg;base64,${imageBase64}`
 
-      // Inicializar worker
-      await this.initWorker();
+      const response = await client.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: "Extract ALL text you can see in this image. Return only the extracted text, nothing else. If you see  ID card (cédula), pay special attention to the ID number."
+              },
+              {
+                type: "image_url",
+                image_url: {
+                  url: imageData,
+                  detail: "high"
+                }
+              }
+            ]
+          }
+        ],
+        max_tokens: 500,
+        temperature: 0
+      })
 
-      // Realizar OCR
-      const { data: { text } } = await this.worker.recognize(processedBuffer);
+      const extractedText = response.choices[0]?.message?.content?.trim() || ''
+      
+      if (!extractedText) {
+        throw new Error('No se pudo extraer texto de la imagen')
+      }
 
-      return text;
+      return extractedText
+
     } catch (error) {
-      console.error('Error extracting text:', error);
-      throw error;
+      console.error('Error extracting text with OpenAI:', error)
+      
+      if (error.status === 401) {
+        throw new Error('API key de OpenAI inválida')
+      }
+      if (error.status === 429) {
+        throw new Error('Límite de rate de OpenAI excedido')
+      }
+      
+      throw error
     }
   }
 
   /**
-   * Extrae el número de cédula del texto reconocido
+   * Extrae el número de cédula del texto reconocido usando OpenAI
    * @param {string} text - Texto extraído por OCR
+   * @returns {Promise<object>} - Resultado con el número de cédula
+   */
+  async extractCedulaNumber(text) {
+    try {
+      const client = this.getClient()
+
+      const response = await client.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [
+          {
+            role: "system",
+            content: "You are an expert at extracting Colombian ID numbers (cédula) from text. A valid cédula has between 6 and 10 digits. Extract ONLY the ID number, nothing else. If you cannot find it, respond with 'NOT_FOUND'."
+          },
+          {
+            role: "user",
+            content: `Extract the Colombian ID number (cédula) from this text:\n\n${text}`
+          }
+        ],
+        max_tokens: 50,
+        temperature: 0
+      })
+
+      const result = response.choices[0]?.message?.content?.trim() || ''
+
+      if (result === 'NOT_FOUND' || !result) {
+        return {
+          success: false,
+          error: 'No se pudo extraer número de cédula',
+          extractedText: text
+        }
+      }
+
+      // Limpiar el resultado (remover espacios, guiones, etc)
+      const cedula = result.replace(/\D/g, '')
+
+      // Validar formato
+      if (!this.isValidCedulaFormat(cedula)) {
+        return {
+          success: false,
+          error: 'El número extraído no tiene un formato válido',
+          extractedText: text,
+          invalidCedula: cedula
+        }
+      }
+
+      return {
+        success: true,
+        cedula: cedula,
+        extractedText: text
+      }
+
+    } catch (error) {
+      console.error('Error extracting cedula with OpenAI:', error)
+      
+      // Fallback a extracción manual si OpenAI falla
+      return this.extractCedulaNumberFallback(text)
+    }
+  }
+
+  /**
+   * Método fallback para extraer cédula sin OpenAI
+   * @param {string} text - Texto extraído
    * @returns {object} - Resultado con el número de cédula
    */
-  extractCedulaNumber(text) {
-    // Limpiar texto
-    const cleanText = text.replace(/\s+/g, ' ').trim();
+  extractCedulaNumberFallback(text) {
+    const cleanText = text.replace(/\s+/g, ' ').trim()
 
-    // Patrones comunes en cédulas colombianas
     const patterns = [
-      // Patrón 1: "NUMERO" o "No." seguido de dígitos
-      /(?:NUMERO|No\.|NUM|NÚMERO)[\s:]*(\d{6,10})/i,
+      /(?:NUMERO|No\.|NUM|NÚMERO|CEDULA|ID)[\s:]*(\d{6,10})/i,
+      /\b(\d{6,10})\b/
+    ]
 
-      // Patrón 2: Secuencia de 6-10 dígitos consecutivos
-      /\b(\d{6,10})\b/,
-
-      // Patrón 3: "CEDULA" seguido de número
-      /CEDULA[\s:]*(\d{6,10})/i,
-
-      // Patrón 4: "ID" seguido de número
-      /ID[\s:]*(\d{6,10})/i
-    ];
-
-    // Intentar cada patrón
     for (const pattern of patterns) {
-      const match = cleanText.match(pattern);
-      if (match && match[1]) {
-        const cedula = match[1];
-
-        // Validar que sea un número de cédula válido (6-10 dígitos)
-        if (this.isValidCedulaFormat(cedula)) {
-          return {
-            success: true,
-            cedula: cedula,
-            extractedText: cleanText
-          };
+      const match = cleanText.match(pattern)
+      if (match && match[1] && this.isValidCedulaFormat(match[1])) {
+        return {
+          success: true,
+          cedula: match[1],
+          extractedText: cleanText,
+          usedFallback: true
         }
       }
     }
 
-    // Si no se encontró con patrones, buscar la secuencia más larga de dígitos
-    const allNumbers = cleanText.match(/\d+/g);
+    const allNumbers = cleanText.match(/\d+/g)
     if (allNumbers) {
-      // Ordenar por longitud descendente
-      const sortedNumbers = allNumbers.sort((a, b) => b.length - a.length);
-
+      const sortedNumbers = allNumbers.sort((a, b) => b.length - a.length)
       for (const num of sortedNumbers) {
         if (this.isValidCedulaFormat(num)) {
           return {
             success: true,
             cedula: num,
             extractedText: cleanText,
-            confidence: 'low' // Baja confianza porque no coincidió con patrones
-          };
+            confidence: 'low',
+            usedFallback: true
+          }
         }
       }
     }
@@ -146,7 +196,7 @@ class OCRService {
       success: false,
       error: 'No se pudo extraer número de cédula',
       extractedText: cleanText
-    };
+    }
   }
 
   /**
@@ -155,77 +205,117 @@ class OCRService {
    * @returns {boolean} - True si es válido
    */
   isValidCedulaFormat(cedula) {
-    // Cédulas colombianas tienen entre 6 y 10 dígitos
-    const minLength = parseInt(process.env.CEDULA_MIN_LENGTH) || 6;
-    const maxLength = parseInt(process.env.CEDULA_MAX_LENGTH) || 10;
+    const minLength = parseInt(process.env.CEDULA_MIN_LENGTH) || 6
+    const maxLength = parseInt(process.env.CEDULA_MAX_LENGTH) || 10
 
     if (!cedula || typeof cedula !== 'string') {
-      return false;
+      return false
     }
 
-    // Solo debe contener dígitos
     if (!/^\d+$/.test(cedula)) {
-      return false;
+      return false
     }
 
-    // Verificar longitud
-    const length = cedula.length;
-    return length >= minLength && length <= maxLength;
+    const length = cedula.length
+    return length >= minLength && length <= maxLength
   }
 
   /**
-   * Procesa una imagen de cédula y extrae el número
+   * Procesa una imagen de cédula y extrae el número directamente con OpenAI
+   * Este método combina OCR y extracción en un solo paso
    * @param {string} imageBase64 - Imagen en formato base64
    * @returns {Promise<object>} - Resultado del procesamiento
    */
   async processCedulaImage(imageBase64) {
     try {
-      // Extraer texto de la imagen
-      const text = await this.extractText(imageBase64);
+      const client = this.getClient()
 
-      if (!text || text.trim().length === 0) {
-        return {
-          success: false,
-          error: 'No se pudo extraer texto de la imagen'
-        };
+      // Asegurar formato correcto
+      const imageData = imageBase64.startsWith('data:image') 
+        ? imageBase64 
+        : `data:image/jpeg;base64,${imageBase64}`
+
+      console.log('PR: Image data:', imageData);
+
+      // Extraer la cédula directamente de la imagen (más eficiente)
+      const response = await client.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: "This is an image of a Colombian ID card (cédula de ciudadanía). Extract ONLY the ID number from the card. The ID number is between 6 and 10 digits. Return ONLY the number, nothing else. If you cannot find it, respond with 'NOT_FOUND'."
+              },
+              {
+                type: "image_url",
+                image_url: {
+                  url: imageData,
+                  detail: "high"
+                }
+              }
+            ]
+          }
+        ],
+        max_tokens: 50,
+        temperature: 0
+      })
+
+      const result = response.choices[0]?.message?.content?.trim() || ''
+
+      if (result === 'NOT_FOUND' || !result) {
+        // Fallback: extraer todo el texto y luego buscar el número
+        console.log('Direct extraction failed, trying fallback method')
+        const text = await this.extractText(imageBase64)
+        return await this.extractCedulaNumber(text)
       }
 
-      // Extraer número de cédula
-      const result = this.extractCedulaNumber(text);
+      // Limpiar resultado
+      const cedula = result.replace(/\D/g, '')
 
-      return result;
+      if (!this.isValidCedulaFormat(cedula)) {
+        return {
+          success: false,
+          error: 'El número extraído no tiene un formato válido',
+          invalidCedula: cedula
+        }
+      }
+
+      return {
+        success: true,
+        cedula: cedula
+      }
 
     } catch (error) {
-      console.error('Error processing cedula image:', error);
+      console.error('Error processing cedula image:', error)
       return {
         success: false,
         error: 'Error procesando imagen de cédula',
         details: error.message
-      };
+      }
     }
   }
 
   /**
-   * Limpia recursos del worker
+   * Limpia recursos (ya no es necesario con OpenAI)
    */
   async terminate() {
-    if (this.worker) {
-      await this.worker.terminate();
-      this.worker = null;
-    }
+    // No hay recursos que limpiar con OpenAI
+    this.openai = null
   }
 }
 
 // Exportar instancia singleton
-const ocrService = new OCRService();
+const ocrService = new OCRService()
 
 // Limpiar recursos al cerrar la aplicación
 process.on('SIGTERM', async () => {
-  await ocrService.terminate();
-});
+  await ocrService.terminate()
+})
 
 process.on('SIGINT', async () => {
-  await ocrService.terminate();
-});
+  await ocrService.terminate()
+})
 
-module.exports = ocrService;
+module.exports = ocrService

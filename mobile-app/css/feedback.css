@@ -1,0 +1,104 @@
+/* Feedback components - Info boxes, success, errors, loading */
+
+.info-box {
+    background: #e3f2fd;
+    border-left: 4px solid #2196F3;
+    padding: 15px;
+    border-radius: 8px;
+    font-size: 14px;
+    color: #1976D2;
+    margin-bottom: 20px;
+}
+
+.success-box {
+    background: #e8f5e9;
+    border-left: 4px solid #4CAF50;
+    padding: 20px;
+    border-radius: 8px;
+    color: #2e7d32;
+}
+
+.success-box h3 {
+    margin-bottom: 10px;
+    font-size: 20px;
+}
+
+.success-box .patient-info {
+    margin: 15px 0;
+    padding: 15px;
+    background: white;
+    border-radius: 8px;
+}
+
+.success-box .patient-info p {
+    margin: 5px 0;
+    font-size: 14px;
+}
+
+.success-box .patient-info strong {
+    color: #1b5e20;
+}
+
+.error-box {
+    background: #ffebee;
+    border-left: 4px solid #f44336;
+    padding: 20px;
+    border-radius: 8px;
+    color: #c62828;
+}
+
+.error-box h3 {
+    margin-bottom: 10px;
+}
+
+.instructions {
+    background: #fff3e0;
+    border-left: 4px solid #ff9800;
+    padding: 15px;
+    border-radius: 8px;
+    font-size: 14px;
+    color: #e65100;
+    margin-bottom: 20px;
+}
+
+.instructions ol {
+    margin: 10px 0 0 20px;
+}
+
+.instructions li {
+    margin: 5px 0;
+}
+
+.loading {
+    display: none;
+    text-align: center;
+    padding: 30px;
+}
+
+.loading.active {
+    display: block;
+}
+
+.spinner {
+    border: 4px solid #f3f3f3;
+    border-top: 4px solid #667eea;
+    border-radius: 50%;
+    width: 50px;
+    height: 50px;
+    animation: spin 1s linear infinite;
+    margin: 0 auto 20px;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.countdown {
+    font-size: 32px;
+    font-weight: bold;
+    text-align: center;
+    margin: 20px 0;
+    color: #667eea;
+}
+

@@ -95,7 +95,7 @@ router.post('/request-dispense', async (req, res) => {
       }
 
       identifier = processResult.cedula;
-      console.log('Cedula detected:', identifier);
+      console.log('SR: Cedula detected:', identifier);
     }
 
     // Validar con el servicio de prescripciones
