@@ -186,6 +186,7 @@ class UIManager {
     this.showScreen('error')
     
     const errorBox = document.querySelector('#screen-error .error-box')
+    errorBox.className = 'error-box'
     errorBox.innerHTML = `
       <h3>❌ Error</h3>
       <p id="error-message" style="margin: 15px 0; font-size: 16px;">
@@ -198,6 +199,32 @@ class UIManager {
       ` : ''}
       <button class="btn btn-secondary" onclick="app.reset()" style="margin-top: 10px;">
         Intentar de nuevo
+      </button>
+    `
+
+    this.clearCountdown()
+  }
+
+  showRegistrationSuccess(message) {
+    this.showScreen('error')
+    
+    const errorBox = document.querySelector('#screen-error .error-box')
+    errorBox.className = 'success-box'
+    errorBox.innerHTML = `
+      <h3>✅ Paciente Registrado</h3>
+      <p style="margin: 15px 0; font-size: 16px;">
+        ${message}
+      </p>
+      <div class="instructions" style="margin-top: 20px;">
+        <strong>Próximos pasos:</strong>
+        <ol>
+          <li>Contacta a tu médico para obtener una prescripción</li>
+          <li>Una vez tengas la prescripción activa</li>
+          <li>Podrás usar el dispensador</li>
+        </ol>
+      </div>
+      <button class="btn btn-primary" onclick="app.reset()" style="margin-top: 20px;">
+        Entendido
       </button>
     `
 
@@ -398,9 +425,8 @@ class DispenserApp {
       
       await this.api.createPatient(formData)
       
-      this.ui.showError(
-        `Paciente registrado exitosamente. Ahora necesitas una prescripción médica para dispensar medicamentos.`,
-        { showRegisterButton: false }
+      this.ui.showRegistrationSuccess(
+        'Tu cuenta ha sido creada exitosamente. Ahora necesitas una prescripción médica para dispensar medicamentos.'
       )
       
     } catch (error) {
