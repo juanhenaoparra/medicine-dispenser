@@ -20,14 +20,19 @@
 // CONFIGURACIÓN DE WIFI
 // ============================================
 
-const char* ssid = "TU_WIFI_SSID";          // Cambiar por tu red WiFi
-const char* password = "4D9697516085";  // Cambiar por tu contraseña
+const char* ssid = "TU_WIFI_SSID";       // ← CAMBIAR: Nombre de tu red WiFi
+const char* password = "TU_WIFI_PASS";   // ← CAMBIAR: Contraseña de tu WiFi
 
 // ============================================
 // CONFIGURACIÓN DE API
 // ============================================
 
-const char* apiBaseUrl = "http://192.168.1.8:3000/api"; // Cambiar por IP de tu servidor
+// ← CAMBIAR: IP de tu computadora donde corre el API
+// Para encontrarla: 
+//   - Windows: ipconfig (busca "Dirección IPv4")
+//   - Mac/Linux: ifconfig (busca "inet")
+//   - Debe ser algo como: 192.168.1.X o 192.168.0.X
+const char* apiBaseUrl = "http://192.168.1.X:3000/api"; 
 const char* dispenserId = "dispenser-01";
 
 // ============================================
@@ -286,7 +291,7 @@ void confirmDispense(String sessionId) {
 
   HTTPClient http;
   
-  // Construir URL
+  // Construir URL con sessionId en la ruta
   String url = String(apiBaseUrl) + "/confirm-dispense/" + sessionId;
   
   http.begin(url);
@@ -296,7 +301,6 @@ void confirmDispense(String sessionId) {
   // Crear JSON body
   StaticJsonDocument<128> doc;
   doc["dispenserId"] = dispenserId;
-  doc["timestamp"] = ""; // El servidor usará su timestamp
 
   String jsonBody;
   serializeJson(doc, jsonBody);
@@ -304,7 +308,7 @@ void confirmDispense(String sessionId) {
   int httpCode = http.POST(jsonBody);
 
   if (httpCode > 0) {
-    if (httpCode == HTTP_CODE_OK) {
+    if (httpCode == HTTP_CODE_OK || httpCode == 200) {
       Serial.println("CONFIRM_OK");
     } else {
       Serial.print("CONFIRM_ERROR:HTTP ");
