@@ -124,7 +124,9 @@ router.post('/request-dispense', async (req, res) => {
         success: false,
         authorized: false,
         reason: validationResult.reason,
-        cedula: method === 'cedula' ? identifier : undefined
+        cedula: method === 'cedula' ? identifier : undefined,
+        needsPrescription: validationResult.needsPrescription || false,
+        patient: validationResult.patient || undefined
       });
     }
 
