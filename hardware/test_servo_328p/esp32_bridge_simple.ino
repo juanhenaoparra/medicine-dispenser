@@ -1,45 +1,54 @@
 /*
- * Dispensador Inteligente de Medicamentos
- * ESP32 Regular (sin cámara) - Módulo de Comunicación
+ * ESP32 Bridge - Versión Simplificada para Arduino 328P
  *
  * Funciones:
  * - Conectividad WiFi
  * - Consulta de sesiones pendientes al API
- * - Comunicación Serial con Arduino Mega
- * 
- * NUEVA ARQUITECTURA:
- * El usuario captura la imagen desde su smartphone y el API crea una sesión.
- * Este ESP32 solo consulta periódicamente si hay sesiones pendientes.
+ * - Comunicación Serial con Arduino Uno/Nano (328P)
+ *
+ * DIFERENCIAS CON VERSIÓN MEGA:
+ * - USA SERIAL HARDWARE (TX/RX en GPIO1/GPIO3)
+ * - Compatible con Arduino Uno/Nano
+ *
+ * Conexiones:
+ * ESP32 ↔ Arduino 328P:
+ *   - ESP32 TX (GPIO1) → Arduino RX (Pin 0)
+ *   - ESP32 RX (GPIO3) → Arduino TX (Pin 1)
+ *   - ESP32 GND → Arduino GND
+ *   - ESP32 VIN → Arduino 5V
+ *
+ * IMPORTANTE:
+ * - Desconectar el cable USB del Arduino al conectar ESP32
+ * - O desconectar los cables TX/RX al subir código
+ * - Los pines 0 y 1 se usan para Serial, no para ESP32
  */
+
+/*
 
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
 
 // ============================================
-// CONFIGURACIÓN DE WIFI
+// CONFIGURACIÓN - CAMBIAR ESTOS VALORES
 // ============================================
 
 const char* ssid = "TU_WIFI_SSID";       // ← CAMBIAR: Nombre de tu red WiFi
 const char* password = "TU_WIFI_PASS";   // ← CAMBIAR: Contraseña de tu WiFi
 
-// ============================================
-// CONFIGURACIÓN DE API
-// ============================================
-
 // ← CAMBIAR: IP de tu computadora donde corre el API
-// Para encontrarla: 
-//   - Windows: ipconfig (busca "Dirección IPv4")
-//   - Mac/Linux: ifconfig (busca "inet")
-//   - Debe ser algo como: 192.168.1.X o 192.168.0.X
-const char* apiBaseUrl = "http://192.168.1.X:3000/api"; 
+// Para encontrarla:
+//   - Mac: ifconfig | grep "inet " | grep -v 127.0.0.1
+//   - Windows: ipconfig (busca IPv4)
+//   - Linux: ip addr | grep inet
+const char* apiBaseUrl = "http://192.168.1.X:3000/api";
 const char* dispenserId = "dispenser-01";
 
 // ============================================
-// CONFIGURACIÓN DE PINES
+// CONFIGURACIÓN DE HARDWARE
 // ============================================
 
-#define LED_STATUS 2      // LED integrado del ESP32 para indicar estado WiFi
+#define LED_STATUS 2      // LED integrado del ESP32
 #define SERIAL_BAUD 115200
 
 // ============================================
@@ -50,7 +59,6 @@ bool wifiConnected = false;
 bool checkingSession = false;
 unsigned long lastCheckTime = 0;
 const unsigned long CHECK_INTERVAL = 2000; // Consultar cada 2 segundos
-const unsigned long CHECK_TIMEOUT = 90000; // Timeout de 90 segundos
 
 String currentSessionId = "";
 
@@ -61,10 +69,10 @@ String currentSessionId = "";
 void setup() {
   // Inicializar Serial para comunicación con Arduino
   Serial.begin(SERIAL_BAUD);
-  
-  // Pequeña pausa para estabilizar
+
+  // Esperar a que Serial esté listo
   delay(100);
-  
+
   Serial.println("ESP32_READY");
 
   // Configurar LED de estado
@@ -106,15 +114,13 @@ void loop() {
 // ============================================
 
 void connectWiFi() {
-  Serial.println("STATUS:Connecting WiFi");
-  
   WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
 
   int attempts = 0;
   while (WiFi.status() != WL_CONNECTED && attempts < 30) {
     delay(500);
-    digitalWrite(LED_STATUS, !digitalRead(LED_STATUS)); // Parpadear LED
+    digitalWrite(LED_STATUS, !digitalRead(LED_STATUS));
     attempts++;
   }
 
@@ -141,8 +147,6 @@ void checkWiFiConnection() {
       wifiConnected = false;
       digitalWrite(LED_STATUS, LOW);
       Serial.println("WIFI_DISCONNECTED");
-      
-      // Intentar reconectar
       delay(1000);
       connectWiFi();
     }
@@ -161,16 +165,12 @@ void checkWiFiConnection() {
 
 void handleCommand(String command) {
   if (command == "CHECK_PENDING") {
-    // Arduino solicita verificar si hay sesión pendiente
     startSessionCheck();
   }
   else if (command == "STOP_CHECK") {
-    // Arduino solicita detener la verificación
     stopSessionCheck();
   }
   else if (command.startsWith("CONFIRM:")) {
-    // Arduino confirma que dispensó exitosamente
-    // Formato: CONFIRM:sessionId
     String sessionId = command.substring(8);
     confirmDispense(sessionId);
   }
@@ -187,8 +187,7 @@ void startSessionCheck() {
   }
 
   checkingSession = true;
-  lastCheckTime = 0; // Forzar verificación inmediata
-  Serial.println("STATUS:Checking for pending session");
+  lastCheckTime = 0;
 }
 
 // ============================================
@@ -198,7 +197,6 @@ void startSessionCheck() {
 void stopSessionCheck() {
   checkingSession = false;
   currentSessionId = "";
-  Serial.println("STATUS:Check stopped");
 }
 
 // ============================================
@@ -207,12 +205,11 @@ void stopSessionCheck() {
 
 void checkPendingSession() {
   HTTPClient http;
-  
-  // Construir URL
+
   String url = String(apiBaseUrl) + "/check-pending/" + String(dispenserId);
-  
+
   http.begin(url);
-  http.setTimeout(10000); // 10 segundos timeout
+  http.setTimeout(10000);
 
   int httpCode = http.GET();
 
@@ -220,13 +217,7 @@ void checkPendingSession() {
     if (httpCode == HTTP_CODE_OK) {
       String payload = http.getString();
       parseSessionResponse(payload);
-    } else {
-      Serial.print("API_ERROR:HTTP ");
-      Serial.println(httpCode);
     }
-  } else {
-    Serial.print("ERROR:HTTP request failed: ");
-    Serial.println(http.errorToString(httpCode));
   }
 
   http.end();
@@ -237,7 +228,6 @@ void checkPendingSession() {
 // ============================================
 
 void parseSessionResponse(String payload) {
-  // Parsear JSON
   StaticJsonDocument<512> doc;
   DeserializationError error = deserializeJson(doc, payload);
 
@@ -250,17 +240,12 @@ void parseSessionResponse(String payload) {
   bool hasPending = doc["hasPending"] | false;
 
   if (hasPending) {
-    // Hay una sesión pendiente - extraer información
     String sessionId = doc["sessionId"] | "";
     String patient = doc["patient"] | "";
     String medicine = doc["medicine"] | "";
     String dosage = doc["dosage"] | "";
-    int timeRemaining = doc["timeRemaining"] | 0;
 
-    // Guardar session ID actual
     currentSessionId = sessionId;
-
-    // Detener verificación
     checkingSession = false;
 
     // Enviar al Arduino
@@ -272,10 +257,6 @@ void parseSessionResponse(String payload) {
     Serial.print(medicine);
     Serial.print(":");
     Serial.println(dosage);
-
-  } else {
-    // No hay sesión pendiente - el Arduino seguirá esperando
-    // No enviar nada para evitar spam
   }
 }
 
@@ -290,15 +271,13 @@ void confirmDispense(String sessionId) {
   }
 
   HTTPClient http;
-  
-  // Construir URL con sessionId en la ruta
+
   String url = String(apiBaseUrl) + "/confirm-dispense/" + sessionId;
-  
+
   http.begin(url);
   http.addHeader("Content-Type", "application/json");
   http.setTimeout(10000);
 
-  // Crear JSON body
   StaticJsonDocument<128> doc;
   doc["dispenserId"] = dispenserId;
 
@@ -314,83 +293,10 @@ void confirmDispense(String sessionId) {
       Serial.print("CONFIRM_ERROR:HTTP ");
       Serial.println(httpCode);
     }
-  } else {
-    Serial.print("ERROR:Confirm request failed: ");
-    Serial.println(http.errorToString(httpCode));
   }
 
   http.end();
-
-  // Limpiar session ID
   currentSessionId = "";
 }
 
-// ============================================
-// NOTAS DE IMPLEMENTACIÓN
-// ============================================
-
-/*
- * PROTOCOLO DE COMUNICACIÓN CON ARDUINO:
- *
- * Arduino → ESP32:
- *   - "CHECK_PENDING"           : Iniciar consulta de sesiones pendientes
- *   - "STOP_CHECK"              : Detener consulta
- *   - "CONFIRM:sessionId"       : Confirmar dispensación exitosa
- *
- * ESP32 → Arduino:
- *   - "ESP32_READY"                              : ESP32 iniciado
- *   - "WIFI_CONNECTED"                           : Conectado a WiFi
- *   - "WIFI_DISCONNECTED"                        : Desconectado de WiFi
- *   - "IP:192.168.1.x"                           : Dirección IP obtenida
- *   - "STATUS:mensaje"                           : Mensajes de estado
- *   - "AUTHORIZED:sessionId:Patient:Med:Dose"   : Sesión autorizada encontrada
- *   - "CONFIRM_OK"                               : Confirmación enviada al API
- *   - "ERROR:mensaje"                            : Error
- *
- * FLUJO DE OPERACIÓN:
- * 
- * 1. Usuario captura imagen desde smartphone
- * 2. API valida y crea sesión de 90 segundos
- * 3. Usuario presiona botón en dispensador físico
- * 4. Arduino envía "CHECK_PENDING" al ESP32
- * 5. ESP32 consulta al API cada 2 segundos
- * 6. Si hay sesión pendiente, ESP32 envía "AUTHORIZED:..." al Arduino
- * 7. Arduino dispensa medicamento
- * 8. Arduino envía "CONFIRM:sessionId" al ESP32
- * 9. ESP32 confirma con el API
- * 10. Fin del ciclo
- *
- * MEJORAS FUTURAS:
- * 
- * - Implementar HTTPS para comunicación segura
- * - Añadir reconexión automática WiFi más robusta
- * - Implementar OTA (Over-The-Air) updates
- * - Añadir modo de configuración WiFi por Bluetooth
- * - Cachear última sesión autorizada localmente
- * - Añadir watchdog timer para reseteo automático
- * - Implementar logs locales en SPIFFS
- * 
- * CONFIGURACIÓN PARA PRODUCCIÓN:
- * 
- * - Cambiar ssid y password por tus credenciales WiFi
- * - Cambiar apiBaseUrl por la IP/dominio de tu servidor
- * - Ajustar dispenserId si tienes múltiples dispensadores
- * - Si usas HTTPS, incluir certificado SSL
- * - Considerar usar WiFiClientSecure para HTTPS
- *
- * CONEXIÓN CON ARDUINO MEGA:
- * 
- * - ESP32 TX (GPIO1) → Arduino RX3 (pin 15)
- * - ESP32 RX (GPIO3) → Arduino TX3 (pin 14)
- * - ESP32 GND → Arduino GND
- * - ESP32 5V → Arduino 5V (o fuente externa)
- * 
- * TROUBLESHOOTING:
- * 
- * - Si WiFi no conecta, verificar SSID y password
- * - Si API no responde, verificar URL y conectividad de red
- * - Para ver logs, abrir Serial Monitor a 115200 baud
- * - El LED integrado (GPIO2) indica estado WiFi
- * - Verificar que el servidor API esté corriendo
- */
-
+*/

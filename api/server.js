@@ -21,6 +21,8 @@ require('dotenv').config();
 const validationRoutes = require('./routes/validation.routes');
 const dispenseRoutes = require('./routes/dispense.routes');
 const sessionRoutes = require('./routes/session.routes');
+const patientRoutes = require('./routes/patient.routes');
+const prescriptionRoutes = require('./routes/prescription.routes');
 
 // Crear aplicación Express
 const app = express();
@@ -79,6 +81,8 @@ app.get('/health', (req, res) => {
 app.use('/api', validationRoutes);
 app.use('/api', dispenseRoutes);
 app.use('/api', sessionRoutes);
+app.use('/api', patientRoutes);
+app.use('/api', prescriptionRoutes);
 
 // Ruta 404
 app.use((req, res) => {

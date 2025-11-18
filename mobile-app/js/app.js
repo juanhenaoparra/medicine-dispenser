@@ -126,9 +126,8 @@ class DispenserApp {
       
       await this.api.createPatient(formData)
       
-      this.ui.showError(
-        `Paciente registrado exitosamente. Ahora necesitas una prescripción médica para dispensar medicamentos.`,
-        { showRegisterButton: false }
+      this.ui.showRegistrationSuccess(
+        'Tu cuenta ha sido creada exitosamente. Ahora necesitas una prescripción médica para dispensar medicamentos.'
       )
       
     } catch (error) {

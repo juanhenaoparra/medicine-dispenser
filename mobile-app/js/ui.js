@@ -83,6 +83,32 @@ export class UIManager {
     this.clearCountdown()
   }
 
+  showRegistrationSuccess(message) {
+    this.showScreen('error')
+    
+    const errorBox = document.querySelector('#screen-error .error-box')
+    errorBox.className = 'success-box'
+    errorBox.innerHTML = `
+      <h3>✅ Paciente Registrado</h3>
+      <p style="margin: 15px 0; font-size: 16px;">
+        ${message}
+      </p>
+      <div class="instructions" style="margin-top: 20px;">
+        <strong>Próximos pasos:</strong>
+        <ol>
+          <li>Contacta a tu médico para obtener una prescripción</li>
+          <li>Una vez tengas la prescripción activa</li>
+          <li>Podrás usar el dispensador</li>
+        </ol>
+      </div>
+      <button class="btn btn-primary" onclick="window.app.reset()" style="margin-top: 20px;">
+        Entendido
+      </button>
+    `
+
+    this.clearCountdown()
+  }
+
   showDispensedSuccess() {
     document.getElementById('screen-success').innerHTML = `
       <div class="success-box">

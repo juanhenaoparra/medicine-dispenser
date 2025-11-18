@@ -5,6 +5,7 @@
  */
 
 const OpenAI = require('openai')
+const logger = require('../utils/logger')
 
 class OCRService {
   constructor() {
@@ -235,7 +236,11 @@ class OCRService {
         ? imageBase64 
         : `data:image/jpeg;base64,${imageBase64}`
 
-      console.log('PR: Image data:', imageData);
+      logger.debug('PR: Processing cedula image', {
+        format: imageData.split(',')[0],
+        size: imageData.length,
+        preview: imageData.substring(0, 50)
+      });
 
       // Extraer la cédula directamente de la imagen (más eficiente)
       const response = await client.chat.completions.create({

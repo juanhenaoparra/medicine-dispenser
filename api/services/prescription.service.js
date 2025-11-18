@@ -41,7 +41,13 @@ class PrescriptionService {
       if (!prescription) {
         return {
           authorized: false,
-          reason: 'No tiene prescripción activa'
+          reason: 'No tiene prescripción activa',
+          patient: {
+            id: patient._id,
+            cedula: patient.cedula,
+            name: patient.fullName
+          },
+          needsPrescription: true
         };
       }
 
@@ -79,11 +85,14 @@ class PrescriptionService {
       return {
         authorized: true,
         patient: {
+          _id: patient._id,
           id: patient._id,
           name: patient.fullName,
-          cedula: patient.cedula
+          cedula: patient.cedula,
+          qrCode: patient.qrCode
         },
         prescription: {
+          _id: prescription._id,
           id: prescription._id,
           medicine: prescription.medicineName,
           dosage: `${prescription.dosage.amount} ${prescription.dosage.unit}`,

@@ -44,7 +44,7 @@
 #define BTN_DISPENSE 7  // Botón para iniciar dispensación
 #define BTN_CANCEL 6    // Botón para cancelar
 
-// Comunicación Serial con ESP32-CAM
+// Comunicación Serial con ESP32 Regular
 #define ESP32_SERIAL Serial3  // TX3=14, RX3=15
 
 // ============================================
@@ -100,7 +100,7 @@ void setup() {
   Serial.begin(115200);
   Serial.println("Sistema Iniciando...");
 
-  // Inicializar comunicación con ESP32-CAM
+  // Inicializar comunicación con ESP32 Regular
   ESP32_SERIAL.begin(115200);
 
   // Configurar pines
@@ -269,7 +269,7 @@ void changeState(SystemState newState) {
 }
 
 // ============================================
-// MANEJO DE RESPUESTAS DEL ESP32-CAM
+// MANEJO DE RESPUESTAS DEL ESP32
 // ============================================
 
 void handleESP32Response(String response) {
