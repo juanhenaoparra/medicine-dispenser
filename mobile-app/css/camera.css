@@ -1,0 +1,36 @@
+/* Camera and image capture components */
+
+.video-container {
+    position: relative;
+    width: 100%;
+    background: #000;
+    border-radius: 12px;
+    overflow: hidden;
+    margin-bottom: 20px;
+}
+
+#video {
+    width: 100%;
+    display: block;
+}
+
+#canvas {
+    display: none;
+}
+
+.preview-container {
+    display: none;
+    position: relative;
+    width: 100%;
+    margin-bottom: 20px;
+}
+
+.preview-container.active {
+    display: block;
+}
+
+#preview {
+    width: 100%;
+    border-radius: 12px;
+}
+

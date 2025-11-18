@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#667eea">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>Dispensador Inteligente</title>
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" href="icon-192.png">
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <div class="header">
+        <h1>💊 Dispensador Inteligente</h1>
+        <p>Sistema de Dispensación Segura</p>
+    </div>
+
+    <div class="container">
+        <!-- Screen 1: Method Selection -->
+        <div id="screen-selection" class="card">
+            <h2 style="margin-bottom: 20px; color: #333;">Selecciona tu método de autenticación</h2>
+            
+            <div class="method-selector">
+                <button class="method-btn" id="btn-qr" onclick="app.selectMethod('qr')">
+                    <div class="icon">📱</div>
+                    <div class="label">Código QR</div>
+                </button>
+                <button class="method-btn" id="btn-cedula" onclick="app.selectMethod('cedula')">
+                    <div class="icon">🪪</div>
+                    <div class="label">Cédula</div>
+                </button>
+            </div>
+
+            <div class="info-box">
+                <strong>¿Cómo funciona?</strong><br>
+                1. Selecciona tu método preferido<br>
+                2. Captura la imagen con tu cámara<br>
+                3. Espera la autorización<br>
+                4. Presiona el botón del dispensador
+            </div>
+        </div>
+
+        <!-- Screen 2: Image Capture -->
+        <div id="screen-capture" class="card hidden">
+            <h2 style="margin-bottom: 20px; color: #333;" id="capture-title">Capturar imagen</h2>
+            
+            <div class="instructions" id="instructions"></div>
+
+            <div class="video-container" id="video-container">
+                <video id="video" autoplay playsinline></video>
+            </div>
+
+            <div class="preview-container" id="preview-container">
+                <img id="preview" alt="Preview">
+            </div>
+
+            <canvas id="canvas"></canvas>
+
+            <div class="controls">
+                <button class="btn btn-secondary" onclick="app.cancelCapture()">Cancelar</button>
+                <button class="btn btn-primary" id="btn-capture" onclick="app.captureImage()">
+                    📸 Capturar
+                </button>
+                <button class="btn btn-primary hidden" id="btn-send" onclick="app.sendImage()">
+                    ✓ Enviar
+                </button>
+            </div>
+        </div>
+
+        <!-- Screen 3: Loading -->
+        <div id="screen-loading" class="card hidden">
+            <div class="loading active">
+                <div class="spinner"></div>
+                <h3 style="color: #333; margin-bottom: 10px;">Procesando...</h3>
+                <p style="color: #666;">Validando tu información</p>
+            </div>
+        </div>
+
+        <!-- Screen 4: Success - Authorized -->
+        <div id="screen-success" class="card hidden">
+            <div class="success-box">
+                <h3>✅ ¡Autorizado!</h3>
+                
+                <div class="patient-info" id="patient-info"></div>
+
+                <div class="instructions">
+                    <strong>Ahora presiona el botón en el dispensador físico</strong>
+                    <p style="margin-top: 10px;">Tienes <span id="time-remaining">90</span> segundos</p>
+                </div>
+
+                <div class="countdown" id="countdown">90</div>
+
+                <button class="btn btn-primary" onclick="app.reset()" style="margin-top: 20px;">
+                    Nueva Dispensación
+                </button>
+            </div>
+        </div>
+
+        <!-- Screen 5: Error -->
+        <div id="screen-error" class="card hidden">
+            <div class="error-box">
+                <h3>❌ Error</h3>
+                <p id="error-message" style="margin: 15px 0; font-size: 16px;"></p>
+                <button class="btn btn-primary" onclick="app.reset()" style="margin-top: 15px;">
+                    Intentar de nuevo
+                </button>
+            </div>
+        </div>
+
+        <!-- Screen 6: Register Patient -->
+        <div id="screen-register-patient" class="card hidden">
+            <h2 style="margin-bottom: 20px; color: #333;">👤 Registrar Nuevo Paciente</h2>
+            
+            <div class="info-box">
+                Este paciente no está registrado. Completa los datos para crear un perfil.
+            </div>
+
+            <form id="patient-form" onsubmit="app.registerPatient(event)">
+                <div class="form-group">
+                    <label for="cedula-input">Cédula *</label>
+                    <input 
+                        type="text" 
+                        id="cedula-input" 
+                        required 
+                        pattern="[0-9]{6,10}"
+                        placeholder="Número de cédula"
+                    >
+                </div>
+
+                <div class="form-group">
+                    <label for="name-input">Nombre Completo *</label>
+                    <input 
+                        type="text" 
+                        id="name-input" 
+                        required 
+                        placeholder="Ej: Juan Pérez"
+                    >
+                </div>
+
+                <div class="form-group">
+                    <label for="phone-input">Teléfono *</label>
+                    <input 
+                        type="tel" 
+                        id="phone-input" 
+                        required 
+                        placeholder="3001234567"
+                    >
+                </div>
+
+                <div class="form-group">
+                    <label for="email-input">Email (opcional)</label>
+                    <input 
+                        type="email" 
+                        id="email-input" 
+                        placeholder="ejemplo@correo.com"
+                    >
+                </div>
+
+                <div class="controls">
+                    <button type="button" class="btn btn-secondary" onclick="app.reset()">
+                        Cancelar
+                    </button>
+                    <button type="submit" class="btn btn-primary">
+                        ✓ Registrar
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="js/bundle.js"></script>
+</body>
+</html>
+

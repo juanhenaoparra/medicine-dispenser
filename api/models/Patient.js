@@ -66,8 +66,7 @@ const patientSchema = new mongoose.Schema({
   qrCode: {
     type: String,
     unique: true,
-    sparse: true, // Permite múltiples valores null
-    index: true
+    sparse: true
   },
 
   // Estado del paciente
@@ -100,14 +99,12 @@ patientSchema.virtual('fullName').get(function() {
 
 // Middleware para actualizar timestamp
 patientSchema.pre('save', function(next) {
-  this.updatedAt = Date.now();
-  next();
-});
+  this.updatedAt = Date.now()
+  next()
+})
 
-// Índices para búsquedas eficientes
-patientSchema.index({ cedula: 1 });
-patientSchema.index({ qrCode: 1 });
-patientSchema.index({ active: 1 });
+// Índice adicional para búsquedas por estado
+patientSchema.index({ active: 1 })
 
 // Métodos del modelo
 patientSchema.methods.generateQRCode = function() {

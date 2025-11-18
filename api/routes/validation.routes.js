@@ -128,7 +128,7 @@ router.post('/validate-cedula', async (req, res) => {
       });
     }
 
-    console.log('Cedula detected:', ocrResult.cedula);
+    console.log('VR: Cedula detected:', ocrResult.cedula);
 
     // Validar con el servicio de prescripciones
     const validationResult = await prescriptionService.validatePatientDispense(
