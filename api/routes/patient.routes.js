@@ -6,7 +6,7 @@
 
 const express = require('express')
 const router = express.Router()
-const Patient = require('../models/Patient')
+const patientRepo = require('../repositories/patient.repository')
 
 /**
  * POST /api/patients
@@ -32,13 +32,13 @@ router.post('/patients', async (req, res) => {
     }
 
     // Verificar si el paciente ya existe
-    const existing = await Patient.findOne({ cedula })
+    const existing = await patientRepo.findByCedula(cedula)
     if (existing) {
       return res.status(409).json({
         success: false,
         message: 'Ya existe un paciente con esta cédula',
         patient: {
-          id: existing._id,
+          id: existing.id,
           cedula: existing.cedula,
           name: existing.fullName
         }
@@ -47,7 +47,7 @@ router.post('/patients', async (req, res) => {
 
     // Determinar firstName y lastName
     let patientFirstName, patientLastName
-    
+
     if (name && !firstName && !lastName) {
       // Si solo envían "name", dividir en primer y último nombre
       const nameParts = name.trim().split(' ')
@@ -66,20 +66,14 @@ router.post('/patients', async (req, res) => {
       })
     }
 
-    // Crear paciente
-    const patient = new Patient({
+    // Crear paciente con repositorio
+    const patient = await patientRepo.create({
       cedula,
       firstName: patientFirstName,
       lastName: patientLastName,
       phone: phone || '',
       email: email || ''
     })
-
-    // Generar código QR
-    patient.generateQRCode()
-
-    // Guardar en base de datos
-    await patient.save()
 
     console.log('Patient created:', patient.cedula)
 
@@ -88,7 +82,7 @@ router.post('/patients', async (req, res) => {
       success: true,
       message: 'Paciente creado exitosamente',
       patient: {
-        id: patient._id,
+        id: patient.id,
         cedula: patient.cedula,
         name: patient.fullName,
         qrCode: patient.qrCode,
@@ -101,13 +95,12 @@ router.post('/patients', async (req, res) => {
   } catch (error) {
     console.error('Error creating patient:', error)
 
-    // Error de validación de Mongoose
-    if (error.name === 'ValidationError') {
-      const errors = Object.values(error.errors).map(e => e.message)
+    // Error de constraint de SQLite
+    if (error.code === 'SQLITE_CONSTRAINT') {
       return res.status(400).json({
         success: false,
-        message: 'Error de validación',
-        errors
+        message: 'Error de validación de datos',
+        details: error.message
       })
     }
 
@@ -126,7 +119,7 @@ router.get('/patients/:cedula', async (req, res) => {
   try {
     const { cedula } = req.params
 
-    const patient = await Patient.findOne({ cedula, active: true })
+    const patient = await patientRepo.findActiveByCedula(cedula)
 
     if (!patient) {
       return res.status(404).json({
@@ -138,7 +131,7 @@ router.get('/patients/:cedula', async (req, res) => {
     res.json({
       success: true,
       patient: {
-        id: patient._id,
+        id: patient.id,
         cedula: patient.cedula,
         name: patient.fullName,
         qrCode: patient.qrCode,
@@ -163,15 +156,13 @@ router.get('/patients/:cedula', async (req, res) => {
  */
 router.get('/patients', async (req, res) => {
   try {
-    const patients = await Patient.find({ active: true })
-      .sort({ registeredAt: -1 })
-      .limit(100)
+    const patients = await patientRepo.findAll()
 
     res.json({
       success: true,
       count: patients.length,
       patients: patients.map(p => ({
-        id: p._id,
+        id: p.id,
         cedula: p.cedula,
         name: p.fullName,
         phone: p.phone,

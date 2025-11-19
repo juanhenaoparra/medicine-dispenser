@@ -313,6 +313,7 @@ class DispenserApp {
     this.capturedImageData = null
     this.sessionId = null
     this.extractedCedula = null
+    this.extractedFullName = null
 
     this.init()
   }
@@ -374,6 +375,7 @@ class DispenserApp {
 
         if (isPatientNotFound && data.cedula) {
           this.extractedCedula = data.cedula
+          this.extractedFullName = data.fullName || null
           this.ui.showError(data.reason, { showRegisterButton: true })
         } else {
           this.ui.showError(data.reason || 'No autorizado')
@@ -404,9 +406,13 @@ class DispenserApp {
 
   showRegisterPatient() {
     this.ui.showScreen('register-patient')
-    
+
     if (this.extractedCedula) {
       document.getElementById('cedula-input').value = this.extractedCedula
+    }
+
+    if (this.extractedFullName) {
+      document.getElementById('name-input').value = this.extractedFullName
     }
   }
 
@@ -448,6 +454,7 @@ class DispenserApp {
     this.capturedImageData = null
     this.sessionId = null
     this.extractedCedula = null
+    this.extractedFullName = null
 
     document.getElementById('btn-qr').classList.remove('active')
     document.getElementById('btn-cedula').classList.remove('active')

@@ -4,9 +4,9 @@
  * Maneja la lógica de validación de prescripciones, dosis diarias y autorización
  */
 
-const Patient = require('../models/Patient');
-const Prescription = require('../models/Prescription');
-const Dispense = require('../models/Dispense');
+const patientRepo = require('../repositories/patient.repository');
+const prescriptionRepo = require('../repositories/prescription.repository');
+const dispenseRepo = require('../repositories/dispense.repository');
 
 class PrescriptionService {
   /**
@@ -28,7 +28,7 @@ class PrescriptionService {
       }
 
       // 2. Verificar que el paciente esté activo
-      if (!patient.isActive()) {
+      if (!patient.active) {
         return {
           authorized: false,
           reason: 'Paciente inactivo'
@@ -36,14 +36,14 @@ class PrescriptionService {
       }
 
       // 3. Buscar prescripción activa
-      const prescription = await this.findActivePrescription(patient._id);
+      const prescription = await this.findActivePrescription(patient.id);
 
       if (!prescription) {
         return {
           authorized: false,
           reason: 'No tiene prescripción activa',
           patient: {
-            id: patient._id,
+            id: patient.id,
             cedula: patient.cedula,
             name: patient.fullName
           },
@@ -52,7 +52,7 @@ class PrescriptionService {
       }
 
       // 4. Verificar validez de la prescripción
-      const validityCheck = prescription.checkValidity();
+      const validityCheck = prescriptionRepo.checkValidity(prescription.id);
 
       if (!validityCheck.valid) {
         return {
@@ -63,21 +63,20 @@ class PrescriptionService {
 
       // 5. Verificar límite de dosis diarias y cooldown
       const cooldownMinutes = parseInt(process.env.DISPENSE_COOLDOWN_MINUTES) || 30;
-      const canDispenseCheck = await Dispense.canDispense(
-        patient._id,
-        prescription._id,
+      const canDispenseCheck = dispenseRepo.canDispense(
+        patient.id,
+        prescription.id,
         prescription.maxDailyDoses,
         cooldownMinutes
       );
 
-      if (!canDispenseCheck.canDispense) {
+      if (!canDispenseCheck.authorized) {
         return {
           authorized: false,
           reason: canDispenseCheck.reason,
           dailyCount: canDispenseCheck.dailyCount,
           maxDailyDoses: canDispenseCheck.maxDailyDoses,
-          minutesRemaining: canDispenseCheck.minutesRemaining,
-          lastDispensedAt: canDispenseCheck.lastDispensedAt
+          minutesRemaining: canDispenseCheck.minutesRemaining
         };
       }
 
@@ -85,15 +84,15 @@ class PrescriptionService {
       return {
         authorized: true,
         patient: {
-          _id: patient._id,
-          id: patient._id,
+          _id: patient.id,
+          id: patient.id,
           name: patient.fullName,
           cedula: patient.cedula,
           qrCode: patient.qrCode
         },
         prescription: {
-          _id: prescription._id,
-          id: prescription._id,
+          _id: prescription.id,
+          id: prescription.id,
           medicine: prescription.medicineName,
           dosage: `${prescription.dosage.amount} ${prescription.dosage.unit}`,
           maxDailyDoses: prescription.maxDailyDoses,
@@ -101,7 +100,7 @@ class PrescriptionService {
         },
         dispenseInfo: {
           dailyCount: canDispenseCheck.dailyCount,
-          remaining: prescription.maxDailyDoses - canDispenseCheck.dailyCount
+          remaining: canDispenseCheck.dosesRemaining
         }
       };
 
@@ -124,9 +123,9 @@ class PrescriptionService {
   async findPatient(identifier, type = 'cedula') {
     try {
       if (type === 'cedula') {
-        return await Patient.findOne({ cedula: identifier, active: true });
+        return patientRepo.findActiveByCedula(identifier);
       } else if (type === 'qr') {
-        return await Patient.findOne({ qrCode: identifier, active: true });
+        return patientRepo.findActiveByQRCode(identifier);
       }
       return null;
     } catch (error) {
@@ -137,22 +136,14 @@ class PrescriptionService {
 
   /**
    * Busca la prescripción activa más reciente de un paciente
-   * @param {string} patientId - ID del paciente
+   * @param {number} patientId - ID del paciente
    * @returns {Promise<object>} - Prescripción encontrada
    */
   async findActivePrescription(patientId) {
     try {
-      const now = new Date();
-
-      return await Prescription.findOne({
-        patient: patientId,
-        status: 'activa',
-        startDate: { $lte: now },
-        endDate: { $gte: now }
-      })
-      .sort({ startDate: -1 })
-      .limit(1);
-
+      const prescriptions = prescriptionRepo.findActiveByPatientId(patientId);
+      // findActiveByPatientId now returns an array, get the first one (most recent)
+      return prescriptions.length > 0 ? prescriptions[0] : null;
     } catch (error) {
       console.error('Error finding active prescription:', error);
       throw error;
@@ -168,15 +159,17 @@ class PrescriptionService {
    */
   async registerDispense(validationResult, authMethod, metadata = {}) {
     try {
-      const dispense = new Dispense({
-        patient: validationResult.patient.id,
-        prescription: validationResult.prescription.id,
+      const dosageParts = validationResult.prescription.dosage.split(' ');
+
+      const dispense = dispenseRepo.create({
+        patientId: validationResult.patient.id,
+        prescriptionId: validationResult.prescription.id,
         authMethod: authMethod,
         medicine: {
           name: validationResult.prescription.medicine,
           dosage: {
-            amount: parseFloat(validationResult.prescription.dosage.split(' ')[0]),
-            unit: validationResult.prescription.dosage.split(' ')[1]
+            amount: parseFloat(dosageParts[0]),
+            unit: dosageParts[1]
           }
         },
         status: 'exitosa',
@@ -189,12 +182,10 @@ class PrescriptionService {
         }
       });
 
-      await dispense.save();
-
       return {
         success: true,
         dispense: {
-          id: dispense._id,
+          id: dispense.id,
           dispensedAt: dispense.dispensedAt,
           medicine: dispense.medicine.name
         }
@@ -225,11 +216,11 @@ class PrescriptionService {
       const patient = await this.findPatient(identifier, identifierType);
 
       if (patient) {
-        const prescription = await this.findActivePrescription(patient._id);
+        const prescription = await this.findActivePrescription(patient.id);
 
-        const dispense = new Dispense({
-          patient: patient._id,
-          prescription: prescription ? prescription._id : null,
+        dispenseRepo.create({
+          patientId: patient.id,
+          prescriptionId: prescription ? prescription.id : null,
           authMethod: authMethod,
           medicine: {
             name: prescription ? prescription.medicineName : 'Desconocido'
@@ -245,8 +236,6 @@ class PrescriptionService {
             responseTime: metadata.responseTime
           }
         });
-
-        await dispense.save();
       }
 
       return { success: true };
@@ -265,26 +254,19 @@ class PrescriptionService {
    */
   async getPatientStats(patientId, days = 30) {
     try {
-      const startDate = new Date();
-      startDate.setDate(startDate.getDate() - days);
+      const stats = dispenseRepo.getPatientStats(patientId);
+      const history = dispenseRepo.getPatientHistory(patientId, { days, limit: 10 });
 
-      const dispenses = await Dispense.find({
-        patient: patientId,
-        dispensedAt: { $gte: startDate }
-      })
-      .sort({ dispensedAt: -1 })
-      .populate('prescription', 'medicineName');
-
-      const total = dispenses.length;
-      const successful = dispenses.filter(d => d.status === 'exitosa').length;
-      const failed = dispenses.filter(d => d.status === 'fallida').length;
+      const total = stats.totalDispenses;
+      const successful = total - stats.failedAttempts;
+      const failed = stats.failedAttempts;
 
       return {
         total,
         successful,
         failed,
         successRate: total > 0 ? ((successful / total) * 100).toFixed(2) : 0,
-        recentDispenses: dispenses.slice(0, 10)
+        recentDispenses: history
       };
 
     } catch (error) {

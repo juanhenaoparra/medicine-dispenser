@@ -8,8 +8,8 @@ const express = require('express');
 const router = express.Router();
 
 const prescriptionService = require('../services/prescription.service');
-const Dispense = require('../models/Dispense');
-const Patient = require('../models/Patient');
+const dispenseRepo = require('../repositories/dispense.repository');
+const patientRepo = require('../repositories/patient.repository');
 
 /**
  * POST /api/dispense
@@ -106,11 +106,7 @@ router.get('/patient/:identifier/history', async (req, res) => {
     }
 
     // Obtener historial
-    const dispenses = await Dispense.find({ patient: patient._id })
-      .sort({ dispensedAt: -1 })
-      .limit(parseInt(limit))
-      .populate('prescription', 'medicineName dosage')
-      .select('-__v');
+    const dispenses = await dispenseRepo.findByPatientId(patient.id, parseInt(limit));
 
     res.status(200).json({
       success: true,
@@ -155,7 +151,7 @@ router.get('/patient/:identifier/stats', async (req, res) => {
     }
 
     // Obtener estadísticas
-    const stats = await prescriptionService.getPatientStats(patient._id, parseInt(days));
+    const stats = await prescriptionService.getPatientStats(patient.id, parseInt(days));
 
     res.status(200).json({
       success: true,
@@ -187,12 +183,7 @@ router.get('/dispenses/recent', async (req, res) => {
   try {
     const { limit = 20 } = req.query;
 
-    const dispenses = await Dispense.find()
-      .sort({ dispensedAt: -1 })
-      .limit(parseInt(limit))
-      .populate('patient', 'firstName lastName cedula')
-      .populate('prescription', 'medicineName dosage')
-      .select('-__v');
+    const dispenses = await dispenseRepo.findRecent(parseInt(limit));
 
     res.status(200).json({
       success: true,
@@ -215,29 +206,14 @@ router.get('/dispenses/recent', async (req, res) => {
  */
 router.get('/dispenses/today', async (req, res) => {
   try {
-    const startOfDay = new Date();
-    startOfDay.setHours(0, 0, 0, 0);
-
-    const endOfDay = new Date();
-    endOfDay.setHours(23, 59, 59, 999);
-
-    const dispenses = await Dispense.find({
-      dispensedAt: {
-        $gte: startOfDay,
-        $lte: endOfDay
-      }
-    })
-      .sort({ dispensedAt: -1 })
-      .populate('patient', 'firstName lastName cedula')
-      .populate('prescription', 'medicineName')
-      .select('-__v');
+    const dispenses = await dispenseRepo.findToday();
 
     const successful = dispenses.filter(d => d.status === 'exitosa').length;
     const failed = dispenses.filter(d => d.status === 'fallida').length;
 
     res.status(200).json({
       success: true,
-      date: startOfDay.toISOString().split('T')[0],
+      date: new Date().toISOString().split('T')[0],
       summary: {
         total: dispenses.length,
         successful,
