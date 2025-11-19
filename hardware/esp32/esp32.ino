@@ -7,14 +7,15 @@
  * - Control de buzzer
  * - LEDs indicadores
  * - Botones
- * 
- * NO NECESITAS ARDUINO MEGA - Solo ESP32!
+
  */
+
+
 
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
-#include <Servo.h>
+#include <ESP32Servo.h>  // Use ESP32-specific servo library
 
 // ============================================
 // CONFIGURACIÓN DE WIFI
