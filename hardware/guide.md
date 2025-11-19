@@ -2,20 +2,50 @@
 
 ## 🎯 Sistema Simple
 
-El sistema tiene 2 componentes principales:
+### Opción 1: Solo ESP32 (RECOMENDADO) ⭐
 
+**1 componente: ESP32 DevKit**
+- WiFi + HTTP calls al API
+- Control de servo motor
+- Control de buzzer
+- LEDs indicadores
+- Botones
+
+**Archivo:** `hardware/esp32_all_in_one/esp32_all_in_one.ino`
+
+### Opción 2: Arduino Mega + ESP32 (Alternativa)
+
+**2 componentes:**
 1. **Arduino Mega 2560** → Controla hardware físico (servo, LCD, LEDs, buzzer)
 2. **ESP32 Regular** → Solo WiFi + HTTP calls al API
+
+**Archivos:** `hardware/arduino_main/` + `hardware/esp32_regular/`
 
 ---
 
 ## 📦 Lo Que Necesitas Comprar
 
-### Hardware Esencial
+### Opción 1: Solo ESP32 (MÁS SIMPLE) ⭐
 
 | Componente | Precio (USD) | Para Qué |
 |------------|--------------|----------|
-| Arduino Mega 2560 | $25-35 | Cerebro del sistema |
+| ESP32 DevKit | $5-7 | TODO (WiFi + servo + buzzer) |
+| Servo Motor SG90 | $2-3 | Abrir/cerrar compartimento |
+| Buzzer 5V | $1 | Sonidos |
+| LEDs (3x) | $0.30 | Verde/Rojo/Amarillo (opcional) |
+| Botones (2x) | $0.40 | Dispensar/Cancelar |
+| Resistencias 220Ω (3x) | $0.30 | Para LEDs |
+| Protoboard | $3-5 | Conexiones |
+| Cables Dupont | $4 | Conexiones |
+| Fuente 5V 2A | $5-8 | Alimentación |
+
+**Total: ~$20-30 USD** 💰
+
+### Opción 2: Arduino Mega + ESP32
+
+| Componente | Precio (USD) | Para Qué |
+|------------|--------------|----------|
+| Arduino Mega 2560 | $25-35 | Control hardware |
 | ESP32 DevKit | $5-7 | WiFi (HTTP calls) |
 | Servo Motor SG90 | $2-3 | Abrir/cerrar compartimento |
 | LCD 16x2 I2C | $4-6 | Mostrar mensajes |
@@ -39,7 +69,31 @@ El sistema tiene 2 componentes principales:
 
 ## 🔌 Conexiones
 
-### Arduino Mega → Componentes
+### Opción 1: Solo ESP32 ⭐
+
+```
+Servo Motor:
+  Señal (naranja) → GPIO18
+  VCC (rojo) → 5V
+  GND (negro) → GND
+
+Buzzer:
+  Positivo → GPIO19
+  Negativo → GND
+
+LEDs (opcional):
+  Verde → GPIO2 (LED integrado) o GPIO4
+  Amarillo → GPIO4
+  Rojo → GPIO5
+  Cada uno con resistencia 220Ω a GND
+
+Botones:
+  Botón 1 (Dispensar) → GPIO0 (botón BOOT) o GPIO2
+  Botón 2 (Cancelar) → GPIO15
+  Con pull-up interno (INPUT_PULLUP)
+```
+
+### Opción 2: Arduino Mega → Componentes
 
 ```
 LCD I2C:
@@ -117,7 +171,50 @@ Buscar e instalar:
 
 ## 🧪 Testing
 
-### Paso 1: Test Servo Solo (SIN ESP32)
+### Opción 1: ESP32 Todo-en-Uno ⭐
+
+1. Abre `hardware/esp32_all_in_one/esp32_all_in_one.ino`
+
+2. **CAMBIAR** estas líneas:
+   ```cpp
+   const char* ssid = "TU_WIFI_SSID";
+   const char* password = "TU_WIFI_PASS";
+   const char* apiBaseUrl = "http://192.168.1.X:3000/api";
+   ```
+
+3. Conecta componentes:
+   - Servo señal → GPIO18
+   - Servo VCC → 5V
+   - Servo GND → GND
+   - Buzzer → GPIO19
+   - Botón → GPIO0 (botón BOOT del ESP32)
+
+4. Selecciona:
+   - `Tools → Board → ESP32 Dev Module`
+   - `Tools → Port → [tu puerto ESP32]`
+
+5. Sube el código
+
+6. Abre Serial Monitor (115200 baud)
+
+7. Deberías ver:
+   ```
+   WiFi conectado!
+   IP: 192.168.1.X
+   Sistema listo. Presiona botón para dispensar.
+   ```
+
+8. Presiona el botón BOOT del ESP32 (o el botón conectado)
+
+9. El ESP32 consultará el API cada 2 segundos
+
+10. Si hay sesión pendiente → Servo se moverá automáticamente
+
+**¡Eso es TODO!** ✅
+
+---
+
+### Opción 2: Test Servo Solo (Arduino Mega SIN ESP32)
 
 1. Conecta solo el servo al Arduino:
    - Señal → Pin 9
@@ -261,12 +358,13 @@ Buscar e instalar:
 
 ## 📝 Notas
 
+- **⭐ RECOMENDADO: Solo ESP32** → Más simple, más barato, hace TODO
 - **ESP32-CAM ya NO se usa** → Sistema usa smartphone + OpenAI OCR
-- **ATmega 328P (Arduino Uno) NO sirve** → Necesitas Mega 2560
-- **Sistema es simple**: Arduino mueve cosas, ESP32 solo hace HTTP
-- **Sin ESP32 no hay WiFi** → Arduino Mega no tiene WiFi integrado
-- **Servo consume corriente** → Usar fuente externa, no USB
+- **Arduino Mega es OPCIONAL** → Solo si quieres LCD o más pines
+- **Sistema es simple**: ESP32 hace WiFi + HTTP + controla servo
+- **Servo consume corriente** → Usar fuente externa 5V 2A mínimo
 - **WiFi debe ser 2.4GHz** → ESP32 no soporta 5GHz
+- **GPIOs del ESP32**: Puedes cambiar los pines en el código si necesitas
 
 ---
 

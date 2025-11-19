@@ -142,29 +142,33 @@
         <p class="subtitle">Generador de Código QR</p>
 
         <div class="info-box">
-            Ingresa tu código de paciente para generar tu QR personal
+            Ingresa tu cédula para obtener tu código QR personal
         </div>
 
         <form id="qr-form">
             <div class="form-group">
-                <label for="patient-code">Código de Paciente</label>
+                <label for="patient-cedula">Cédula</label>
                 <input
                     type="text"
-                    id="patient-code"
-                    placeholder="Ej: abc123xyz456"
+                    id="patient-cedula"
+                    placeholder="Ej: 1002643012"
                     required
-                    minlength="8"
+                    pattern="[0-9]{6,10}"
+                    minlength="6"
+                    maxlength="10"
                 >
             </div>
 
-            <button type="submit">Generar Código QR</button>
+            <button type="submit">Obtener Código QR</button>
         </form>
+
+        <div id="error-message" style="display: none; color: #d32f2f; background: #ffebee; padding: 15px; border-radius: 10px; margin-top: 20px; font-size: 14px;"></div>
 
         <div id="qr-container">
             <div id="qrcode"></div>
             <div class="qr-info">
                 <strong>Muestra este código al dispensador</strong>
-                <p>El código expira en 5 minutos</p>
+                <p>Este es tu código QR permanente</p>
             </div>
         </div>
     </div>
@@ -174,51 +178,85 @@
 
     <script>
         let qrCode = null;
-        let expirationTimer = null;
+        const API_BASE_URL = 'http://localhost:3000/api';
 
-        document.getElementById('qr-form').addEventListener('submit', function(e) {
+        function showError(message) {
+            const errorDiv = document.getElementById('error-message');
+            errorDiv.textContent = message;
+            errorDiv.style.display = 'block';
+            setTimeout(() => {
+                errorDiv.style.display = 'none';
+            }, 5000);
+        }
+
+        document.getElementById('qr-form').addEventListener('submit', async function(e) {
             e.preventDefault();
 
-            const patientCode = document.getElementById('patient-code').value.trim();
+            const cedula = document.getElementById('patient-cedula').value.trim();
 
-            if (!patientCode || patientCode.length < 8) {
-                alert('Por favor ingresa un código de paciente válido (mínimo 8 caracteres)');
+            if (!cedula || cedula.length < 6 || cedula.length > 10) {
+                showError('Por favor ingresa una cédula válida (6-10 dígitos)');
                 return;
             }
 
-            // Generar timestamp para el QR
-            const timestamp = Date.now();
-            const qrData = `${patientCode}`;
+            try {
+                // Buscar paciente en la base de datos
+                const response = await fetch(`${API_BASE_URL}/patients/${cedula}`);
 
-            // Limpiar QR anterior si existe
-            const qrContainer = document.getElementById('qrcode');
-            qrContainer.innerHTML = '';
+                if (!response.ok) {
+                    if (response.status === 404) {
+                        showError('Paciente no encontrado. Por favor verifica tu cédula o regístrate primero.');
+                    } else {
+                        showError('Error al buscar paciente. Por favor intenta de nuevo.');
+                    }
+                    return;
+                }
 
-            // Generar nuevo QR
-            qrCode = new QRCode(qrContainer, {
-                text: qrData,
-                width: 250,
-                height: 250,
-                colorDark: "#000000",
-                colorLight: "#ffffff",
-                correctLevel: QRCode.CorrectLevel.H
-            });
+                const data = await response.json();
 
-            // Mostrar contenedor QR
-            document.getElementById('qr-container').classList.add('show');
+                if (!data.success || !data.patient || !data.patient.qrCode) {
+                    showError('No se pudo obtener el código QR del paciente.');
+                    return;
+                }
 
-            // Configurar expiración (5 minutos)
-            clearTimeout(expirationTimer);
-            expirationTimer = setTimeout(function() {
-                alert('El código QR ha expirado. Por favor genera uno nuevo.');
-                document.getElementById('qr-container').classList.remove('show');
-            }, 5 * 60 * 1000); // 5 minutos
+                const patient = data.patient;
+                const qrData = patient.qrCode;
 
-            // Scroll al QR
-            document.getElementById('qr-container').scrollIntoView({
-                behavior: 'smooth',
-                block: 'center'
-            });
+                // Limpiar QR anterior si existe
+                const qrContainer = document.getElementById('qrcode');
+                qrContainer.innerHTML = '';
+
+                // Generar nuevo QR
+                qrCode = new QRCode(qrContainer, {
+                    text: qrData,
+                    width: 250,
+                    height: 250,
+                    colorDark: "#000000",
+                    colorLight: "#ffffff",
+                    correctLevel: QRCode.CorrectLevel.H
+                });
+
+                // Actualizar información del QR
+                const qrInfo = document.querySelector('.qr-info');
+                qrInfo.innerHTML = `
+                    <strong>Paciente: ${patient.name}</strong>
+                    <p>Cédula: ${patient.cedula}</p>
+                    <p style="margin-top: 10px; font-size: 12px; color: #999;">Muestra este código al dispensador para obtener tu medicamento</p>
+                `;
+
+                // Mostrar contenedor QR
+                document.getElementById('qr-container').classList.add('show');
+
+                // Scroll al QR
+                document.getElementById('qr-container').scrollIntoView({
+                    behavior: 'smooth',
+                    block: 'center'
+                });
+
+            } catch (error) {
+                console.error('Error:', error);
+                showError('Error de conexión. Verifica que el servidor esté funcionando.');
+            }
         });
 
         // Prevenir cierre accidental

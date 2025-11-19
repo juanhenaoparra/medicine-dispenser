@@ -1,6 +1,6 @@
 /**
  * Rutas de Sesiones de Dispensación
- * 
+ *
  * Maneja el flujo de autorización sin ESP32-CAM:
  * 1. Usuario captura imagen desde móvil
  * 2. API valida y crea sesión temporal
@@ -11,7 +11,8 @@
 const express = require('express');
 const router = express.Router();
 
-const DispenseSession = require('../models/DispenseSession');
+const sessionRepo = require('../repositories/session.repository');
+const dispenseRepo = require('../repositories/dispense.repository');
 const qrService = require('../services/qr.service');
 const ocrService = require('../services/ocr.service');
 const prescriptionService = require('../services/prescription.service');
@@ -19,26 +20,6 @@ const prescriptionService = require('../services/prescription.service');
 /**
  * POST /api/request-dispense
  * Crea una sesión de autorización después de validar la imagen
- * 
- * Este endpoint reemplaza la funcionalidad del ESP32-CAM.
- * El usuario captura la imagen desde su smartphone y la envía aquí.
- * 
- * Body: { 
- *   image: "data:image/jpeg;base64,...",
- *   method: "qr" | "cedula",
- *   dispenserId: "dispenser-01" (opcional)
- * }
- * 
- * Response: {
- *   success: true,
- *   authorized: true,
- *   sessionId: "sess_...",
- *   expiresIn: 90,
- *   patient: "Nombre del paciente",
- *   medicine: "Nombre del medicamento",
- *   dosage: "Dosis",
- *   message: "Instrucciones para el usuario"
- * }
  */
 router.post('/request-dispense', async (req, res) => {
   const startTime = Date.now();
@@ -95,7 +76,10 @@ router.post('/request-dispense', async (req, res) => {
       }
 
       identifier = processResult.cedula;
-      console.log('SR: Cedula detected:', identifier);
+      console.log('Cedula detected:', identifier);
+      if (processResult.fullName) {
+        console.log('Full name detected:', processResult.fullName);
+      }
     }
 
     // Validar con el servicio de prescripciones
@@ -125,34 +109,33 @@ router.post('/request-dispense', async (req, res) => {
         authorized: false,
         reason: validationResult.reason,
         cedula: method === 'cedula' ? identifier : undefined,
+        fullName: (method === 'cedula' && processResult.fullName) ? processResult.fullName : undefined,
         needsPrescription: validationResult.needsPrescription || false,
         patient: validationResult.patient || undefined
       });
     }
 
     // Crear sesión de dispensación
-    const session = await DispenseSession.createSession(
-      validationResult.patient._id,
-      validationResult.prescription._id,
-      method,
-      {
+    const session = sessionRepo.createSession({
+      patientId: validationResult.patient.id,
+      prescriptionId: validationResult.prescription.id,
+      authMethod: method,
+      patientInfo: {
         name: validationResult.patient.name,
         cedula: validationResult.patient.cedula,
         qrCode: validationResult.patient.qrCode
       },
-      {
+      medicineInfo: {
         name: validationResult.prescription.medicine,
         dosage: validationResult.prescription.dosage
       },
-      {
+      dispenserId,
+      metadata: {
         ipAddress: req.ip,
         userAgent: req.get('user-agent'),
         deviceInfo: req.get('user-agent')
       }
-    );
-
-    session.dispenserId = dispenserId;
-    await session.save();
+    });
 
     console.log('Session created:', session.sessionId);
 
@@ -161,7 +144,7 @@ router.post('/request-dispense', async (req, res) => {
       success: true,
       authorized: true,
       sessionId: session.sessionId,
-      expiresIn: session.getTimeRemaining(),
+      expiresIn: session.timeRemaining,
       patient: validationResult.patient.name,
       medicine: validationResult.prescription.medicine,
       dosage: validationResult.prescription.dosage,
@@ -182,30 +165,16 @@ router.post('/request-dispense', async (req, res) => {
 /**
  * GET /api/check-pending/:dispenserId
  * Consulta si hay una sesión pendiente para el dispensador
- * 
- * Este endpoint es llamado por el ESP32 cuando el usuario presiona el botón.
- * Retorna la sesión pendiente más reciente que no haya expirado.
- * 
- * Params: dispenserId (default: "dispenser-01")
- * 
- * Response: {
- *   hasPending: true,
- *   sessionId: "sess_...",
- *   patient: "Nombre",
- *   medicine: "Medicamento",
- *   dosage: "Dosis",
- *   timeRemaining: 85
- * }
  */
 router.get('/check-pending/:dispenserId?', async (req, res) => {
   try {
     const dispenserId = req.params.dispenserId || 'dispenser-01';
 
     // Limpiar sesiones expiradas primero
-    await DispenseSession.cleanupExpiredSessions();
+    sessionRepo.cleanupExpiredSessions();
 
     // Buscar sesión pendiente
-    const session = await DispenseSession.getPendingSession(dispenserId);
+    const session = sessionRepo.getPendingSession(dispenserId);
 
     if (!session) {
       return res.status(200).json({
@@ -215,10 +184,7 @@ router.get('/check-pending/:dispenserId?', async (req, res) => {
     }
 
     // Verificar si ya expiró
-    if (session.isExpired()) {
-      session.status = 'expired';
-      await session.save();
-
+    if (session.isExpired) {
       return res.status(200).json({
         hasPending: false,
         message: 'Sesión expirada'
@@ -232,7 +198,7 @@ router.get('/check-pending/:dispenserId?', async (req, res) => {
       patient: session.patientInfo.name,
       medicine: session.medicineInfo.name,
       dosage: session.medicineInfo.dosage,
-      timeRemaining: session.getTimeRemaining(),
+      timeRemaining: session.timeRemaining,
       authMethod: session.authMethod
     });
 
@@ -248,26 +214,11 @@ router.get('/check-pending/:dispenserId?', async (req, res) => {
 /**
  * POST /api/confirm-dispense/:sessionId
  * Confirma que el medicamento fue dispensado
- * 
- * Este endpoint es llamado por el Arduino después de dispensar exitosamente.
- * Marca la sesión como 'dispensed' y registra la dispensación en la base de datos.
- * 
- * Params: sessionId
- * Body: { 
- *   dispenserId: "dispenser-01" (opcional),
- *   timestamp: ISO string (opcional)
- * }
- * 
- * Response: {
- *   success: true,
- *   message: "Dispensación confirmada",
- *   dispenseId: "..."
- * }
  */
 router.post('/confirm-dispense/:sessionId', async (req, res) => {
   try {
     const { sessionId } = req.params;
-    const { dispenserId = 'dispenser-01', timestamp } = req.body;
+    const { dispenserId = 'dispenser-01' } = req.body;
 
     if (!sessionId) {
       return res.status(400).json({
@@ -276,48 +227,56 @@ router.post('/confirm-dispense/:sessionId', async (req, res) => {
       });
     }
 
-    // Confirmar la sesión
-    const session = await DispenseSession.confirmDispense(sessionId);
+    // Get session before confirming
+    const session = sessionRepo.findBySessionId(sessionId);
 
-    // Registrar la dispensación en el modelo Dispense
-    const Dispense = require('../models/Dispense');
-    
-    const dispenseRecord = await Dispense.create({
-      patient: session.patientId,
-      prescription: session.prescriptionId,
-      medicine: session.medicineInfo.name,
-      dosage: session.medicineInfo.dosage,
-      timestamp: timestamp ? new Date(timestamp) : new Date(),
-      method: session.authMethod,
+    if (!session) {
+      return res.status(404).json({
+        success: false,
+        message: 'Sesión no encontrada'
+      });
+    }
+
+    if (session.status !== 'pending') {
+      return res.status(400).json({
+        success: false,
+        message: `Sesión en estado ${session.status}, no se puede confirmar`
+      });
+    }
+
+    // Confirm the session
+    sessionRepo.confirmDispense(sessionId);
+
+    // Create dispense record
+    const dispenseRecord = dispenseRepo.create({
+      patientId: session.patientId,
+      prescriptionId: session.prescriptionId,
+      authMethod: session.authMethod,
+      medicine: {
+        name: session.medicineInfo.name,
+        dosage: session.medicineInfo.dosage ? {
+          amount: parseFloat(session.medicineInfo.dosage.split(' ')[0]),
+          unit: session.medicineInfo.dosage.split(' ')[1]
+        } : null
+      },
       dispenserId,
-      sessionId: session.sessionId,
-      status: 'dispensed',
+      status: 'exitosa',
       metadata: {
-        confirmedAt: new Date(),
-        sessionCreatedAt: session.createdAt,
-        sessionExpiredAt: session.expiresAt
+        notes: `Session ID: ${session.sessionId}`
       }
     });
 
-    console.log('Dispense confirmed:', dispenseRecord._id);
+    console.log('Dispense confirmed:', dispenseRecord.id);
 
     res.status(200).json({
       success: true,
       message: 'Dispensación confirmada y registrada',
-      dispenseId: dispenseRecord._id,
+      dispenseId: dispenseRecord.id,
       sessionId: session.sessionId
     });
 
   } catch (error) {
     console.error('Error in confirm-dispense:', error);
-    
-    // Errores específicos
-    if (error.message.includes('no encontrada') || error.message.includes('expirada') || error.message.includes('estado')) {
-      return res.status(400).json({
-        success: false,
-        message: error.message
-      });
-    }
 
     res.status(500).json({
       success: false,
@@ -329,23 +288,12 @@ router.post('/confirm-dispense/:sessionId', async (req, res) => {
 /**
  * GET /api/session/:sessionId
  * Obtiene el estado de una sesión específica
- * 
- * Útil para que la web app monitoree el estado de la sesión
- * 
- * Response: {
- *   sessionId: "...",
- *   status: "pending" | "dispensed" | "expired" | "cancelled",
- *   timeRemaining: 45,
- *   ...
- * }
  */
 router.get('/session/:sessionId', async (req, res) => {
   try {
     const { sessionId } = req.params;
 
-    const session = await DispenseSession.findOne({ sessionId })
-      .populate('patientId', 'name')
-      .populate('prescriptionId', 'medicine dosage');
+    const session = sessionRepo.findBySessionId(sessionId);
 
     if (!session) {
       return res.status(404).json({
@@ -354,17 +302,11 @@ router.get('/session/:sessionId', async (req, res) => {
       });
     }
 
-    // Actualizar estado si expiró
-    if (session.status === 'pending' && session.isExpired()) {
-      session.status = 'expired';
-      await session.save();
-    }
-
     res.status(200).json({
       success: true,
       sessionId: session.sessionId,
       status: session.status,
-      timeRemaining: session.getTimeRemaining(),
+      timeRemaining: session.timeRemaining,
       patient: session.patientInfo.name,
       medicine: session.medicineInfo.name,
       dosage: session.medicineInfo.dosage,
@@ -391,7 +333,7 @@ router.delete('/session/:sessionId', async (req, res) => {
   try {
     const { sessionId } = req.params;
 
-    const session = await DispenseSession.findOne({ sessionId });
+    const session = sessionRepo.findBySessionId(sessionId);
 
     if (!session) {
       return res.status(404).json({
@@ -407,8 +349,7 @@ router.delete('/session/:sessionId', async (req, res) => {
       });
     }
 
-    session.status = 'cancelled';
-    await session.save();
+    sessionRepo.cancelSession(sessionId);
 
     res.status(200).json({
       success: true,
@@ -425,4 +366,3 @@ router.delete('/session/:sessionId', async (req, res) => {
 });
 
 module.exports = router;
-

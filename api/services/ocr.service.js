@@ -270,10 +270,11 @@ class OCRService {
       const result = response.choices[0]?.message?.content?.trim() || ''
 
       if (result === 'NOT_FOUND' || !result) {
-        // Fallback: extraer todo el texto y luego buscar el número
-        console.log('Direct extraction failed, trying fallback method')
-        const text = await this.extractText(imageBase64)
-        return await this.extractCedulaNumber(text)
+        logger.debug('PR: Cedula extracted not found:', result)
+        return {
+          success: false,
+          error: 'No se pudo extraer número de cédula de la imagen'
+        }
       }
 
       // Limpiar resultado
@@ -287,9 +288,50 @@ class OCRService {
         }
       }
 
+      // Try to extract full name (optional - no error if it fails)
+      let fullName = null
+      try {
+        const responseName = await client.chat.completions.create({
+          model: "gpt-4o-mini",
+          messages: [
+            {
+              role: "user",
+              content: [
+                {
+                  type: "text",
+                  text: "This is an image of a Colombian ID card (cédula de ciudadanía). Extract ONLY the full name (first name and last name) from the card. Return it in format 'FirstName LastName', nothing else. If you cannot find it, respond with 'NOT_FOUND'."
+                },
+                {
+                  type: "image_url",
+                  image_url: {
+                    url: imageData,
+                    detail: "high"
+                  }
+                }
+              ]
+            }
+          ],
+          max_tokens: 100,
+          temperature: 0
+        })
+
+        const resultName = responseName.choices[0]?.message?.content?.trim() || ''
+
+        if (resultName && resultName !== 'NOT_FOUND') {
+          fullName = resultName
+          logger.debug('PR: Name extracted:', fullName)
+        } else {
+          logger.debug('PR: Name not found in image')
+        }
+      } catch (nameError) {
+        // If name extraction fails, continue without error
+        logger.debug('Could not extract name from ID card:', nameError.message)
+      }
+
       return {
         success: true,
-        cedula: cedula
+        cedula: cedula,
+        fullName: fullName
       }
 
     } catch (error) {

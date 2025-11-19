@@ -6,8 +6,8 @@
 
 const express = require('express')
 const router = express.Router()
-const Prescription = require('../models/Prescription')
-const Patient = require('../models/Patient')
+const prescriptionRepo = require('../repositories/prescription.repository')
+const patientRepo = require('../repositories/patient.repository')
 
 /**
  * POST /api/prescriptions
@@ -59,9 +59,9 @@ router.post('/prescriptions', async (req, res) => {
     // Buscar paciente (por cédula o ID)
     let patient
     if (patientCedula) {
-      patient = await Patient.findOne({ cedula: patientCedula, active: true })
+      patient = await patientRepo.findActiveByCedula(patientCedula)
     } else if (patientId) {
-      patient = await Patient.findById(patientId)
+      patient = await patientRepo.findById(patientId)
     }
 
     if (!patient) {
@@ -72,19 +72,15 @@ router.post('/prescriptions', async (req, res) => {
     }
 
     // Verificar si ya tiene prescripción activa para el mismo medicamento
-    const existingPrescription = await Prescription.findOne({
-      patient: patient._id,
-      medicineName: medicineName,
-      status: 'activa',
-      endDate: { $gt: new Date() }
-    })
+    const existingPrescriptions = await prescriptionRepo.findActiveByPatientId(patient.id)
+    const existingPrescription = existingPrescriptions.find(p => p.medicineName === medicineName)
 
     if (existingPrescription) {
       return res.status(409).json({
         success: false,
         message: 'Ya existe una prescripción activa para este medicamento',
         prescription: {
-          id: existingPrescription._id,
+          id: existingPrescription.id,
           medicine: existingPrescription.medicineName,
           endDate: existingPrescription.endDate
         }
@@ -92,15 +88,15 @@ router.post('/prescriptions', async (req, res) => {
     }
 
     // Calcular fechas
-    const startDate = new Date()
+    const startDate = new Date().toISOString()
     const endDate = new Date()
     endDate.setDate(endDate.getDate() + durationDays)
 
-    // Crear prescripción
-    const prescription = new Prescription({
-      patient: patient._id,
+    // Crear prescripción usando repositorio
+    const prescription = await prescriptionRepo.create({
+      patientId: patient.id,
       medicineName,
-      medicineCode: medicineCode || '',
+      medicineCode: medicineCode || null,
       dosage: {
         amount: dosage.amount || 1,
         unit: dosage.unit || 'tabletas'
@@ -113,24 +109,22 @@ router.post('/prescriptions', async (req, res) => {
       doctor: {
         name: doctorName,
         license: doctorLicense,
-        specialty: doctorSpecialty || ''
+        specialty: doctorSpecialty || null
       },
-      startDate,
-      endDate,
+      startDate: startDate,
+      endDate: endDate.toISOString(),
       status: 'activa',
-      notes: notes || ''
+      notes: notes || null
     })
 
-    await prescription.save()
-
-    console.log('Prescription created:', prescription._id)
+    console.log('Prescription created:', prescription.id)
 
     // Respuesta exitosa
     res.status(201).json({
       success: true,
       message: 'Prescripción creada exitosamente',
       prescription: {
-        id: prescription._id,
+        id: prescription.id,
         patient: patient.fullName,
         patientCedula: patient.cedula,
         medicine: prescription.medicineName,
@@ -171,7 +165,7 @@ router.get('/prescriptions/patient/:cedula', async (req, res) => {
   try {
     const { cedula } = req.params
 
-    const patient = await Patient.findOne({ cedula })
+    const patient = await patientRepo.findByCedula(cedula)
     if (!patient) {
       return res.status(404).json({
         success: false,
@@ -179,15 +173,13 @@ router.get('/prescriptions/patient/:cedula', async (req, res) => {
       })
     }
 
-    const prescriptions = await Prescription.find({ patient: patient._id })
-      .sort({ createdAt: -1 })
-      .limit(50)
+    const prescriptions = await prescriptionRepo.findByPatientId(patient.id)
 
     res.json({
       success: true,
       count: prescriptions.length,
       prescriptions: prescriptions.map(p => ({
-        id: p._id,
+        id: p.id,
         medicine: p.medicineName,
         dosage: `${p.dosage.amount} ${p.dosage.unit}`,
         frequency: `${p.frequency.times} veces ${p.frequency.period}`,

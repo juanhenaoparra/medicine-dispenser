@@ -10,7 +10,6 @@
  */
 
 const express = require('express');
-const mongoose = require('mongoose');
 const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
@@ -99,29 +98,12 @@ app.use((req, res) => {
 app.use((err, req, res, next) => {
   console.error('Error:', err);
 
-  // Error de validación de Mongoose
-  if (err.name === 'ValidationError') {
-    const errors = Object.values(err.errors).map(e => e.message);
+  // SQLite constraint errors
+  if (err.code === 'SQLITE_CONSTRAINT') {
     return res.status(400).json({
       success: false,
-      message: 'Validation Error',
-      errors
-    });
-  }
-
-  // Error de cast de Mongoose (ID inválido)
-  if (err.name === 'CastError') {
-    return res.status(400).json({
-      success: false,
-      message: 'Invalid ID format'
-    });
-  }
-
-  // Error de duplicado de MongoDB
-  if (err.code === 11000) {
-    return res.status(400).json({
-      success: false,
-      message: 'Duplicate field value'
+      message: 'Database constraint violation',
+      details: err.message
     });
   }
 
@@ -136,16 +118,14 @@ app.use((err, req, res, next) => {
 // CONEXIÓN A BASE DE DATOS
 // ============================================
 
+const { initializeDatabase } = require('./config/sqlite');
+
 const connectDB = async () => {
   try {
-    const conn = await mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/medicine-dispenser', {
-      useNewUrlParser: true,
-      useUnifiedTopology: true
-    });
-
-    console.log(`MongoDB Connected: ${conn.connection.host}`);
+    initializeDatabase();
+    console.log('SQLite Database initialized successfully');
   } catch (error) {
-    console.error(`Error connecting to MongoDB: ${error.message}`);
+    console.error(`Error connecting to SQLite: ${error.message}`);
     process.exit(1);
   }
 };
@@ -164,6 +144,7 @@ const startServer = async () => {
   app.listen(PORT, () => {
     console.log('===========================================');
     console.log(`  Medicine Dispenser API`);
+    console.log(`  Database: SQLite`);
     console.log(`  Environment: ${process.env.NODE_ENV || 'development'}`);
     console.log(`  Server running on port ${PORT}`);
     console.log(`  Health check: http://localhost:${PORT}/health`);
