@@ -639,6 +639,7 @@ void dispense() {
   stateStartTime = millis();
 
   Serial.println("\n→ DISPENSANDO...");
+  Serial.println("  Realizando 3 ciclos de dispensación");
 
   // LED verde
   digitalWrite(LED_GREEN, HIGH);
@@ -646,18 +647,41 @@ void dispense() {
   // Reducir WiFi durante operación del servo (opcional pero recomendado)
   WiFi.setSleep(true);
 
-  // Abrir servo
-  Serial.println("  Abriendo servo...");
-  moveServoSafe(SERVO_OPEN);
-  delay(2000);  // Mantener abierto 2 segundos
+  // ATTACH SERVO UNA SOLA VEZ (como en el test que funciona)
+  Serial.println("→ Preparando servo...");
+  servoMotor.setPeriodHertz(50);
+  servoMotor.attach(SERVO_PIN, 500, 2400);  // Pattern 1 que funciona
+  delay(100);
+  servoAttached = true;
 
-  // Cerrar servo
-  Serial.println("  Cerrando servo...");
-  moveServoSafe(SERVO_CLOSED);
-  delay(1000);  // Esperar que alcance la posición
+  // 3 CICLOS: 0° → 90° → 0° → 90° → 0° → 90° → 0°
+  for (int ciclo = 1; ciclo <= 3; ciclo++) {
+    Serial.print("\n  Ciclo ");
+    Serial.print(ciclo);
+    Serial.println("/3:");
 
-  // Desconectar servo para liberar PWM
-  detachServo();
+    // Cerrar (0°)
+    Serial.println("    → 0° (cerrado)");
+    servoMotor.write(SERVO_CLOSED);
+    delay(1000);
+
+    // Abrir (90°)
+    Serial.println("    → 90° (abierto)");
+    servoMotor.write(SERVO_OPEN);
+    delay(2000);
+  }
+
+  // Posición final cerrada
+  Serial.println("\n  → Posición final: 0° (cerrado)");
+  servoMotor.write(SERVO_CLOSED);
+  delay(1000);
+
+  Serial.println("  ✓ 3 ciclos completados");
+
+  // AHORA SÍ desconectar servo
+  servoMotor.detach();
+  servoAttached = false;
+  Serial.println("  Servo desconectado");
 
   // Reactivar WiFi
   WiFi.setSleep(false);
