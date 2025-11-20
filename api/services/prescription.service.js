@@ -70,15 +70,15 @@ class PrescriptionService {
         cooldownMinutes
       );
 
-      if (!canDispenseCheck.authorized) {
-        return {
-          authorized: false,
-          reason: canDispenseCheck.reason,
-          dailyCount: canDispenseCheck.dailyCount,
-          maxDailyDoses: canDispenseCheck.maxDailyDoses,
-          minutesRemaining: canDispenseCheck.minutesRemaining
-        };
-      }
+      // if (!canDispenseCheck.authorized) {
+      //   return {
+      //     authorized: false,
+      //     reason: canDispenseCheck.reason,
+      //     dailyCount: canDispenseCheck.dailyCount,
+      //     maxDailyDoses: canDispenseCheck.maxDailyDoses,
+      //     minutesRemaining: canDispenseCheck.minutesRemaining
+      //   };
+      // }
 
       // 6. Todo validado correctamente
       return {
