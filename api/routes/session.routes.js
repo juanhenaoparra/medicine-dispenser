@@ -13,9 +13,11 @@ const router = express.Router();
 
 const sessionRepo = require('../repositories/session.repository');
 const dispenseRepo = require('../repositories/dispense.repository');
+const dispenserRepo = require('../repositories/dispenser.repository');
 const qrService = require('../services/qr.service');
 const ocrService = require('../services/ocr.service');
 const prescriptionService = require('../services/prescription.service');
+const notificationService = require('../services/notification.service');
 
 /**
  * POST /api/request-dispense
@@ -138,6 +140,47 @@ router.post('/request-dispense', async (req, res) => {
     });
 
     console.log('Session created:', session.sessionId);
+
+    // Push notification to ESP32
+    const dispenser = dispenserRepo.findById(dispenserId);
+    if (dispenser && dispenserRepo.isOnline(dispenserId)) {
+      console.log(`Attempting to notify dispenser ${dispenserId} at ${dispenser.ipAddress}:${dispenser.port}`);
+
+      try {
+        const notificationResult = await notificationService.notifyDispenser(
+          dispenser.ipAddress,
+          dispenser.port,
+          {
+            sessionId: session.sessionId,
+            patientInfo: {
+              name: validationResult.patient.name
+            },
+            medicineInfo: {
+              name: validationResult.prescription.medicine,
+              dosage: validationResult.prescription.dosage
+            },
+            expiresAt: session.expiresAt
+          }
+        );
+
+        if (notificationResult.success) {
+          console.log(`✓ ESP32 notified successfully (${notificationResult.attempts} attempts)`);
+        } else {
+          console.warn(`✗ Failed to notify ESP32: ${notificationResult.error}`);
+          console.warn('ESP32 will need to use fallback polling mode');
+        }
+      } catch (error) {
+        console.error('Error sending notification to ESP32:', error.message);
+        console.warn('ESP32 will need to use fallback polling mode');
+      }
+    } else {
+      if (!dispenser) {
+        console.warn(`Dispenser ${dispenserId} not registered. Session created but ESP32 not notified.`);
+      } else {
+        console.warn(`Dispenser ${dispenserId} is offline. Session created but ESP32 not notified.`);
+      }
+      console.warn('ESP32 will need to use fallback polling mode');
+    }
 
     // Respuesta exitosa
     res.status(200).json({
