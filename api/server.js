@@ -22,6 +22,7 @@ const dispenseRoutes = require('./routes/dispense.routes');
 const sessionRoutes = require('./routes/session.routes');
 const patientRoutes = require('./routes/patient.routes');
 const prescriptionRoutes = require('./routes/prescription.routes');
+const dispenserRoutes = require('./routes/dispenser.routes');
 
 // Crear aplicación Express
 const app = express();
@@ -82,6 +83,7 @@ app.use('/api', dispenseRoutes);
 app.use('/api', sessionRoutes);
 app.use('/api', patientRoutes);
 app.use('/api', prescriptionRoutes);
+app.use('/api/dispensers', dispenserRoutes);
 
 // Ruta 404
 app.use((req, res) => {

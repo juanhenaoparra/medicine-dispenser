@@ -44,9 +44,9 @@ function createSession(sessionData) {
     // Create new session
     const sessionId = generateSessionId();
     const createdAt = new Date().toISOString();
-    // Environment variable for session duration
-    const sessionDuration = process.env.SESSION_DURATION || 30000;
-    const expiresAt = new Date(Date.now() + sessionDuration).toISOString(); // 90 seconds, timeout
+    // Environment variable for session duration (parse as int to avoid string concatenation)
+    const sessionDuration = parseInt(process.env.SESSION_DURATION) || 30000;
+    const expiresAt = new Date(Date.now() + sessionDuration).toISOString(); // 30 seconds default, timeout
 
     const insertSql = `
       INSERT INTO dispense_sessions (
